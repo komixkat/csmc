@@ -1056,30 +1056,75 @@ META
 }
 TICK
 
-    cat > "$pack_dir/data/minecraft/tags/functions/load.json" <<LOADTAG
-{
-  "values": [
-    "csmc_hold:load"
-  ]
-}
-LOADTAG
-
     cat > "$pack_dir/data/csmc_hold/functions/tick.mcfunction" <<TICKFN
 execute positioned $(( sx - radius )) 0 $(( sz - radius )) as @a unless entity @s[dx=$(( radius * 2 )),dy=512,dz=$(( radius * 2 ))] run execute if entity @s[gamemode=adventure] run tp @s $sx $sy $sz
-execute if entity @a[gamemode=survival] run function csmc_hold:step
+execute if entity @a[gamemode=survival] run function csmc_hold:race
 TICKFN
 
     cat > "$pack_dir/data/csmc_hold/functions/step.mcfunction" <<STEP
 scoreboard players add c csmc_time 5
 execute if score c csmc_time matches 100 run scoreboard players set c csmc_time 0
 execute if score c csmc_time matches 0 run scoreboard players add s csmc_time 1
-execute if score c csmc_time matches 0 run scoreboard players add run csmc_secs 1
 execute if score s csmc_time matches 60 run scoreboard players set s csmc_time 0
 execute if score s csmc_time matches 60 run scoreboard players add m csmc_time 1
 execute if score m csmc_time matches 60 run scoreboard players set m csmc_time 0
 execute if score m csmc_time matches 60 run scoreboard players add h csmc_time 1
-title @a actionbar {"text":"Time: ","color":"gold","extra":[{"score":{"name":"h","objective":"csmc_time"}},{"text":":"},{"score":{"name":"m","objective":"csmc_time"}},{"text":":"},{"score":{"name":"s","objective":"csmc_time"}},{"text":"."},{"score":{"name":"c","objective":"csmc_time"}}]}
 STEP
+    for hp in 0 1; do
+        for mp in 0 1; do
+            for sp in 0 1; do
+                for cp in 0 1; do
+                    local cond=""
+                    local hpad=""
+                    local mpad=""
+                    local spad=""
+                    local cpad=""
+                    if [ "$hp" = 1 ]; then
+                        cond="$cond if score h csmc_time matches 0..9"
+                        hpad='{"text":" "},{"score":{"name":"h","objective":"csmc_time"}}'
+                    else
+                        cond="$cond unless score h csmc_time matches 0..9"
+                        hpad='{"score":{"name":"h","objective":"csmc_time"}}'
+                    fi
+                    if [ "$mp" = 1 ]; then
+                        cond="$cond if score m csmc_time matches 0..9"
+                        mpad='{"text":" "},{"score":{"name":"m","objective":"csmc_time"}}'
+                    else
+                        cond="$cond unless score m csmc_time matches 0..9"
+                        mpad='{"score":{"name":"m","objective":"csmc_time"}}'
+                    fi
+                    if [ "$sp" = 1 ]; then
+                        cond="$cond if score s csmc_time matches 0..9"
+                        spad='{"text":" "},{"score":{"name":"s","objective":"csmc_time"}}'
+                    else
+                        cond="$cond unless score s csmc_time matches 0..9"
+                        spad='{"score":{"name":"s","objective":"csmc_time"}}'
+                    fi
+                    if [ "$cp" = 1 ]; then
+                        cond="$cond if score c csmc_time matches 0..9"
+                        cpad='{"text":" "},{"score":{"name":"c","objective":"csmc_time"}}'
+                    else
+                        cond="$cond unless score c csmc_time matches 0..9"
+                        cpad='{"score":{"name":"c","objective":"csmc_time"}}'
+                    fi
+                    printf -- 'execute %s run title @a actionbar {"text":"Time: ","color":"gold","extra":[%s,{"text":":"},%s,{"text":":"},%s,{"text":"."},%s]}\n' "${cond# }" "$hpad" "$mpad" "$spad" "$cpad" \
+                        >> "$pack_dir/data/csmc_hold/functions/step.mcfunction"
+                done
+            done
+        done
+    done
+
+    cat > "$pack_dir/data/csmc_hold/functions/race.mcfunction" <<RACE
+execute if score done csmc_time matches 0 if entity @e[type=ender_dragon] run scoreboard players set seen csmc_time 1
+execute if score done csmc_time matches 0 if score seen csmc_time matches 1 unless entity @e[type=ender_dragon] run function csmc_hold:beat
+execute if score done csmc_time matches 0 run function csmc_hold:step
+RACE
+
+    cat > "$pack_dir/data/csmc_hold/functions/beat.mcfunction" <<BEAT
+scoreboard players set done csmc_time 1
+title @a title {"text":"Beat the game.","color":"gold","bold":true}
+tellraw @a {"text":"Beat the game in ","color":"gold","bold":true,"extra":[{"score":{"name":"h","objective":"csmc_time"}},{"text":":"},{"score":{"name":"m","objective":"csmc_time"}},{"text":":"},{"score":{"name":"s","objective":"csmc_time"}},{"text":"."},{"score":{"name":"c","objective":"csmc_time"}},{"text":". Good Game.","color":"green"}]}
+BEAT
 
     cat > "$pack_dir/data/csmc_hold/functions/release.mcfunction" <<REL
 gamemode survival @a
@@ -1087,8 +1132,10 @@ scoreboard players set c csmc_time 0
 scoreboard players set s csmc_time 0
 scoreboard players set m csmc_time 0
 scoreboard players set h csmc_time 0
-scoreboard players set run csmc_secs 0
-tellraw @a {"text":"GO! Race started, everyone to survival","color":"green","bold":true}
+scoreboard players set seen csmc_time 0
+scoreboard players set done csmc_time 0
+time set 0
+tellraw @a {"text":"Timer Started, Best of Luck.","color":"green","bold":true}
 REL
 
     cat > "$pack_dir/data/csmc_hold/functions/arm.mcfunction" <<ARM
@@ -1097,13 +1144,9 @@ scoreboard players set c csmc_time 0
 scoreboard players set s csmc_time 0
 scoreboard players set m csmc_time 0
 scoreboard players set h csmc_time 0
-scoreboard players set run csmc_secs 0
+scoreboard players set seen csmc_time 0
+scoreboard players set done csmc_time 0
 ARM
-
-    cat > "$pack_dir/data/csmc_hold/functions/load.mcfunction" <<LOADFN
-scoreboard objectives setdisplay sidebar csmc_secs
-scoreboard objectives modify csmc_secs displayname {"text":"Time (s)"}
-LOADFN
 }
 
 main() {
@@ -1316,7 +1359,6 @@ CFG
     else
         ok "World generated, sending shutdown command..."
         echo "scoreboard objectives add csmc_time dummy" >&3
-        echo "scoreboard objectives add csmc_secs dummy" >&3
         sleep 1
         echo "stop" >&3
         wait "$server_pid" || true

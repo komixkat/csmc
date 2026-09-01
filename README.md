@@ -31,7 +31,7 @@ The commands below run from the server console (the terminal running `start.sh`)
 /function csmc_hold:release
 ```
 
-Everyone switches to survival, the hold is disabled, and the race timer starts.
+Everyone switches to survival, the hold is disabled, the time of day resets to day start, and the race timer starts with a message.
 
 ### Next race
 
@@ -43,7 +43,9 @@ Back to adventure mode for the next race. The timer stops and resets to zero.
 
 ### Timer
 
-The in-game timer shows on a gold action bar while you run, in `h:m:s.cs` form (centisecond = one hundredth of a second). It also tracks total seconds on the sidebar. It starts with `release` and resets with `arm` or `release`.
+While you run, a gold timer shows on the action bar above the hotbar in `h:m:s.cs` form (centisecond = one hundredth of a second). It is width-fixed so the digits never shift around. It starts with `release` and resets with `arm` or `release`.
+
+When the Ender Dragon is slain, the timer freezes and the chat announces `Beat the game in h:m:s.cs. Good Game.` It stays frozen until the next `arm` or `release`.
 
 ## Server flags
 
