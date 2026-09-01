@@ -388,8 +388,8 @@ force-gamemode=true
 difficulty=normal
 pvp=false
 spawn-protection=${spawn_prot}
-white-list=true
-enforce-whitelist=true
+white-list=false
+enforce-whitelist=false
 online-mode=false
 max-players=${max_players}
 view-distance=${view_distance}
@@ -672,6 +672,106 @@ download_mod_from_modrinth() {
     return 0
 }
 
+world_spawn_from_level() {
+    local level_dat="$1"
+    [ -f "$level_dat" ] || return 1
+    python3 - "$level_dat" <<'PY'
+import gzip, struct, sys
+data = gzip.open(sys.argv[1], 'rb').read()
+pos = [0]
+def u8():
+    v = data[pos[0]]
+    pos[0] += 1
+    return v
+def u16():
+    v = struct.unpack('>H', data[pos[0]:pos[0]+2])[0]
+    pos[0] += 2
+    return v
+def s16():
+    v = struct.unpack('>h', data[pos[0]:pos[0]+2])[0]
+    pos[0] += 2
+    return v
+def s32():
+    v = struct.unpack('>i', data[pos[0]:pos[0]+4])[0]
+    pos[0] += 4
+    return v
+def s64():
+    v = struct.unpack('>q', data[pos[0]:pos[0]+8])[0]
+    pos[0] += 8
+    return v
+def f32():
+    v = struct.unpack('>f', data[pos[0]:pos[0]+4])[0]
+    pos[0] += 4
+    return v
+def f64():
+    v = struct.unpack('>d', data[pos[0]:pos[0]+8])[0]
+    pos[0] += 8
+    return v
+def name():
+    n = u16()
+    v = data[pos[0]:pos[0]+n].decode('utf-8')
+    pos[0] += n
+    return v
+def tag(t):
+    if t == 0:
+        return None
+    if t == 1:
+        return u8()
+    if t == 2:
+        return s16()
+    if t == 3:
+        return s32()
+    if t == 4:
+        return s64()
+    if t == 5:
+        return f32()
+    if t == 6:
+        return f64()
+    if t == 7:
+        n = s32()
+        v = data[pos[0]:pos[0]+n]
+        pos[0] += n
+        return v
+    if t == 8:
+        return name()
+    if t == 9:
+        et = u8()
+        n = s32()
+        return [tag(et) for _ in range(n)]
+    if t == 10:
+        out = {}
+        while True:
+            tt = u8()
+            if tt == 0:
+                break
+            k = name()
+            out[k] = tag(tt)
+        return out
+    if t == 11:
+        n = s32()
+        return [s32() for _ in range(n)]
+    if t == 12:
+        n = s32()
+        return [s64() for _ in range(n)]
+t = u8()
+_ = name()
+root = tag(t)
+data_tag = root['Data'] if 'Data' in root else root
+print('%s %s' % (data_tag['SpawnX'], data_tag['SpawnZ']))
+PY
+}
+
+apply_property() {
+    local key="$1"
+    local value="$2"
+    local f="$SERVER_DIR/server.properties"
+    if grep -q "^${key}=" "$f"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$f"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$f"
+    fi
+}
+
 main() {
     MC_VERSION=$(select_version)
 
@@ -686,9 +786,7 @@ main() {
     MAX_PLAYERS="${MAX_PLAYERS:-30}"
     SERVER_IP=$(local_ip)
     RACE_BORDER="${RACE_BORDER:-59999968}"
-    LOBBY_X="${LOBBY_X:-0}"
-    LOBBY_Y="${LOBBY_Y:-100}"
-    LOBBY_Z="${LOBBY_Z:-0}"
+    START_BORDER="${START_BORDER:-256}"
 
     separator
     echo "  Minecraft Co-op Speedrun - Server Setup"
@@ -775,6 +873,7 @@ main() {
     MODS_FAILED=0
 
     MODRINTH_MODS=(
+        "fabric-api:Fabric API"
         "lithium:Lithium"
         "ferrite-core:FerriteCore"
         "krypton:Krypton"
@@ -823,15 +922,8 @@ EULA
   "mc_version": "$MC_VERSION",
   "seed": "$EVENT_SEED",
   "max_players": $MAX_PLAYERS,
-  "lobby": {
-    "x": $LOBBY_X,
-    "y": $LOBBY_Y,
-    "z": $LOBBY_Z,
-    "border_diameter": 20
-  },
-  "race": {
-    "border_diameter": $RACE_BORDER
-  },
+  "start_border_diameter": $START_BORDER,
+  "race_border_diameter": $RACE_BORDER,
   "spawn_protection": 10,
   "java_memory": "$JAVA_MEMORY",
   "view_distance": $VIEW_DISTANCE
@@ -883,6 +975,23 @@ CFG
 
     echo ""
     ok "Initial launch complete, server shut down cleanly"
+    echo ""
+
+    log "Centering the world border on the spawn point..."
+    local spawn_coords spawn_x spawn_z
+    if spawn_coords=$(world_spawn_from_level "$SERVER_DIR/world/level.dat" 2>/dev/null); then
+        spawn_x="${spawn_coords%% *}"
+        spawn_z="${spawn_coords#* }"
+    else
+        spawn_x=0
+        spawn_z=0
+    fi
+    local start_border
+    start_border=$(printf '%s\n' "$START_BORDER" | grep -oP '^\d+' | head -n 1) || start_border=256
+    apply_property world-border-center-x "$spawn_x"
+    apply_property world-border-center-z "$spawn_z"
+    apply_property world-border-size "$start_border"
+    ok "World border ${start_border} at spawn $spawn_x,$spawn_z"
     echo ""
 
     log "Creating convenience symlink..."
