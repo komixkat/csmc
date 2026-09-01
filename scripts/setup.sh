@@ -625,8 +625,6 @@ PROPS
 generate_start_script() {
     local java_home="$1"
     local java_mem="$2"
-    local start_border="$3"
-    local race_border="$4"
 
     cat > "$SERVER_DIR/start.sh" <<'START'
 #!/usr/bin/env bash
@@ -643,8 +641,6 @@ fi
 
 SERVER_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER_JAR="$SERVER_DIR/server.jar"
-START_BORDER=START_BORDER_PLACEHOLDER
-RACE_BORDER=RACE_BORDER_PLACEHOLDER
 
 java_major_of() {
     local out
@@ -751,10 +747,6 @@ if [ -n "$ONLINE_ACTION" ]; then
     echo "[START] online-mode=$ONLINE_ACTION"
 fi
 
-send_cmd() {
-    printf '%s\n' "$*" >&3
-}
-
 world_spawn() {
     [ -f "$SERVER_DIR/world/level.dat" ] || { echo "0 0"; return 1; }
     python3 - "$SERVER_DIR/world/level.dat" <<'PY' 2>/dev/null
@@ -843,139 +835,13 @@ print('%s %s' % (data_tag['SpawnX'], data_tag['SpawnZ']))
 PY
 }
 
-setup_world_border() {
-    while ! grep -q "Done" "$SERVER_DIR/logs/latest.log" 2>/dev/null; do
-        kill -0 "$SERVER_PID" 2>/dev/null || return
-        sleep 2
-    done
-    sleep 5
-    local sx sz
-    read -r sx sz <<< "$(world_spawn)"
-    send_cmd "/worldborder center $sx $sz"
-    sleep 1
-    send_cmd "/worldborder set $START_BORDER"
-    echo "[SPEEDRUN] World border $START_BORDER centered at spawn ($sx,$sz)"
-}
-
-event_seed() {
-    [ -f "$SERVER_DIR/event/config/event.json" ] || { echo ""; return; }
-    python3 - "$SERVER_DIR/event/config/event.json" <<'PY' 2>/dev/null
-import json, sys
-print(json.load(open(sys.argv[1])).get("seed", ""))
-PY
-}
-
-run_timer() {
-    sleep 3
-    while kill -0 "$SERVER_PID" 2>/dev/null; do
-        local start epoch elapsed
-        start=$(cat "$SERVER_DIR/event/results/timer.state" 2>/dev/null || echo "")
-        if echo "$start" | grep -qP '^\d+$'; then
-            epoch=$(date +%s)
-            elapsed=$((epoch - start))
-            send_cmd "/scoreboard players set __race__ speedrun_time $elapsed"
-        fi
-        sleep 1
-    done
-}
-
-run_achievements() {
-    tail -n 0 -F "$SERVER_DIR/logs/latest.log" 2>/dev/null | while read -r line; do
-        if [ -f "$SERVER_DIR/event/results/active.state" ] && echo "$line" | grep -qE "made the advancement|just earned the achievement"; then
-            local who ach out
-            who=$(echo "$line" | sed -E 's/^.*: ([^ ]+) has (made the advancement|just earned the achievement).*/\1/')
-            ach=$(echo "$line" | grep -oE '\[[^]]+\]$' | tr -d '[]')
-            if [ -n "$who" ] && [ -n "$ach" ]; then
-                out=$(cat "$SERVER_DIR/event/results/last-achievement.txt" 2>/dev/null || echo "")
-                if [ "$out" != "$ach" ]; then
-                    echo "$ach" > "$SERVER_DIR/event/results/last-achievement.txt"
-                    echo "$(date '+%F %T')  $who - $ach" | tee -a "$SERVER_DIR/event/results/achievements.txt"
-                    echo "[SPEEDRUN] First $ach: $who"
-                fi
-            fi
-        fi
-    done
-}
-
-speedrun_start() {
-    echo ""
-    echo "=== SPEEDRUN START ==="
-    if [ -f "$SERVER_DIR/event/results/active.state" ]; then
-        echo "[SPEEDRUN] A speedrun is already running. Use /speedrun end first."
-        echo ""
-        return
-    fi
-    send_cmd "/worldborder set $RACE_BORDER"
-    apply_setting pvp true
-    send_cmd "/reload"
-    send_cmd "/gamemode survival @a"
-    send_cmd "/scoreboard objectives add speedrun_time dummy"
-    send_cmd "/scoreboard objectives setdisplay sidebar speedrun_time"
-    echo "$(date +%s)" > "$SERVER_DIR/event/results/timer.state"
-    echo active > "$SERVER_DIR/event/results/active.state"
-    : > "$SERVER_DIR/event/results/last-achievement.txt"
-    cat >> "$SERVER_DIR/event/results/races.txt" <<RACE
-Start $(date '+%F %T')  seed $(event_seed)
-RACE
-    echo "[SPEEDRUN] World border to $RACE_BORDER, pvp on, game mode survival"
-    echo "[SPEEDRUN] Timer started (scoreboard speedrun_time in the sidebar)"
-    echo "[SPEEDRUN] First notable achievements will be logged to event/results/achievements.txt"
-    run_timer &
-    echo ""
-}
-
-speedrun_end() {
-    echo ""
-    echo "=== SPEEDRUN END ==="
-    if [ ! -f "$SERVER_DIR/event/results/active.state" ]; then
-        echo "[SPEEDRUN] No speedrun is running."
-        echo ""
-        return
-    fi
-    local start epoch elapsed
-    start=$(cat "$SERVER_DIR/event/results/timer.state" 2>/dev/null || echo "")
-    if echo "$start" | grep -qP '^\d+$'; then
-        epoch=$(date +%s)
-        elapsed=$((epoch - start))
-        echo "End   $(date '+%F %T')  total $elapsed s" >> "$SERVER_DIR/event/results/races.txt"
-        echo "[SPEEDRUN] Finished in $elapsed s"
-    fi
-    send_cmd "/scoreboard remove speedrun_time"
-    rm -f "$SERVER_DIR/event/results/timer.state"
-    rm -f "$SERVER_DIR/event/results/active.state"
-    rm -f "$SERVER_DIR/event/results/last-achievement.txt"
-    echo ""
-}
-
-speedrun_status() {
-    echo ""
-    echo "=== SPEEDRUN STATUS ==="
-    if [ -f "$SERVER_DIR/event/results/active.state" ]; then
-        local start epoch elapsed
-        start=$(cat "$SERVER_DIR/event/results/timer.state" 2>/dev/null || echo "")
-        if echo "$start" | grep -qP '^\d+$'; then
-            epoch=$(date +%s)
-            elapsed=$((epoch - start))
-            echo "[SPEEDRUN] Running, $elapsed s elapsed"
-        fi
-    else
-        echo "[SPEEDRUN] Not running"
-    fi
-    echo "[SPEEDRUN] Achievements so far:"
-    [ -f "$SERVER_DIR/event/results/achievements.txt" ] && cat "$SERVER_DIR/event/results/achievements.txt" || echo "  (none)"
-    echo ""
-}
+SPAWN_COORDS="$(world_spawn || true)"
+echo "[START] World spawn: $SPAWN_COORDS"
+echo "[START] Place a race border with: /worldborder center $SPAWN_COORDS  then  /worldborder set <diameter>"
 
 echo "[START] Server address: $(local_ip):25565"
-echo "[START] Start the speedrun: /speedrun start"
-echo "[START] Check or stop: /speedrun status | /speedrun end"
 
-trap 'kill $SERVER_PID 2>/dev/null' EXIT
-mkdir -p "$SERVER_DIR/event"/results
-FIFO="$SERVER_DIR/.console-pipe"
-mkfifo "$FIFO"
-
-"$JAVA_BIN" \
+exec "$JAVA_BIN" \
     -Xms4G \
     -XmxJAVA_MEM_PLACEHOLDER \
     -XX:+UseG1GC \
@@ -998,36 +864,11 @@ mkfifo "$FIFO"
     -XX:MaxTenuringThreshold=1 \
     -Dusing.aikars.flags=https://mcflags.emc.gs \
     -Daikars.new.flags=true \
-    -jar fabric-server-launch.jar nogui \
-    < "$FIFO" 2>&1 | tee "$SERVER_DIR/run.log" &
-SERVER_PID=$!
-exec 3>"$FIFO"
-
-setup_world_border &
-run_achievements &
-ACH_PID=$!
-
-while read -r line; do
-    if [ "$line" = "/speedrun start" ]; then
-        speedrun_start
-    elif [ "$line" = "/speedrun status" ]; then
-        speedrun_status
-    elif [ "$line" = "/speedrun end" ]; then
-        speedrun_end
-    else
-        send_cmd "$line"
-    fi
-done
-
-kill "$ACH_PID" 2>/dev/null
-rm -f "$FIFO"
-exit 0
+    -jar fabric-server-launch.jar nogui
 START
 
     sed -i "s|JAVA_HOME_PLACEHOLDER|${java_home}|g" "$SERVER_DIR/start.sh"
     sed -i "s|JAVA_MEM_PLACEHOLDER|${java_mem}|g" "$SERVER_DIR/start.sh"
-    sed -i "s|START_BORDER_PLACEHOLDER|${start_border}|g" "$SERVER_DIR/start.sh"
-    sed -i "s|RACE_BORDER_PLACEHOLDER|${race_border}|g" "$SERVER_DIR/start.sh"
     chmod +x "$SERVER_DIR/start.sh"
 }
 
@@ -1102,106 +943,6 @@ download_mod_from_modrinth() {
     return 0
 }
 
-world_spawn_from_level() {
-    local level_dat="$1"
-    [ -f "$level_dat" ] || return 1
-    python3 - "$level_dat" <<'PY'
-import gzip, struct, sys
-data = gzip.open(sys.argv[1], 'rb').read()
-pos = [0]
-def u8():
-    v = data[pos[0]]
-    pos[0] += 1
-    return v
-def u16():
-    v = struct.unpack('>H', data[pos[0]:pos[0]+2])[0]
-    pos[0] += 2
-    return v
-def s16():
-    v = struct.unpack('>h', data[pos[0]:pos[0]+2])[0]
-    pos[0] += 2
-    return v
-def s32():
-    v = struct.unpack('>i', data[pos[0]:pos[0]+4])[0]
-    pos[0] += 4
-    return v
-def s64():
-    v = struct.unpack('>q', data[pos[0]:pos[0]+8])[0]
-    pos[0] += 8
-    return v
-def f32():
-    v = struct.unpack('>f', data[pos[0]:pos[0]+4])[0]
-    pos[0] += 4
-    return v
-def f64():
-    v = struct.unpack('>d', data[pos[0]:pos[0]+8])[0]
-    pos[0] += 8
-    return v
-def name():
-    n = u16()
-    v = data[pos[0]:pos[0]+n].decode('utf-8')
-    pos[0] += n
-    return v
-def tag(t):
-    if t == 0:
-        return None
-    if t == 1:
-        return u8()
-    if t == 2:
-        return s16()
-    if t == 3:
-        return s32()
-    if t == 4:
-        return s64()
-    if t == 5:
-        return f32()
-    if t == 6:
-        return f64()
-    if t == 7:
-        n = s32()
-        v = data[pos[0]:pos[0]+n]
-        pos[0] += n
-        return v
-    if t == 8:
-        return name()
-    if t == 9:
-        et = u8()
-        n = s32()
-        return [tag(et) for _ in range(n)]
-    if t == 10:
-        out = {}
-        while True:
-            tt = u8()
-            if tt == 0:
-                break
-            k = name()
-            out[k] = tag(tt)
-        return out
-    if t == 11:
-        n = s32()
-        return [s32() for _ in range(n)]
-    if t == 12:
-        n = s32()
-        return [s64() for _ in range(n)]
-t = u8()
-_ = name()
-root = tag(t)
-data_tag = root['Data'] if 'Data' in root else root
-print('%s %s' % (data_tag['SpawnX'], data_tag['SpawnZ']))
-PY
-}
-
-apply_property() {
-    local key="$1"
-    local value="$2"
-    local f="$SERVER_DIR/server.properties"
-    if grep -q "^${key}=" "$f"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$f"
-    else
-        printf '%s=%s\n' "$key" "$value" >> "$f"
-    fi
-}
-
 main() {
     log "Fetching Minecraft version list from Mojang..."
     local manifest="/tmp/csmc-manifest.json"
@@ -1271,7 +1012,7 @@ main() {
     fi
 
     log "Creating directory structure..."
-    mkdir -p "$SERVER_DIR"/{mods,event/config,event/results,event/logs,world,logs,java}
+    mkdir -p "$SERVER_DIR"/{mods,event/config,event/logs,world,logs,java}
     ok "Directories created"
     echo ""
 
@@ -1356,12 +1097,12 @@ eula=true
 EULA
     ok "eula.txt created"
 
-    generate_start_script "${JAVA_HOME_DIR:-/usr}" "$JAVA_MEMORY" "$START_BORDER" "$RACE_BORDER"
+    generate_start_script "${JAVA_HOME_DIR:-/usr}" "$JAVA_MEMORY"
     ok "start.sh created"
     echo ""
 
     log "Creating event directories..."
-    mkdir -p "$SERVER_DIR/event"/{config,results,logs}
+    mkdir -p "$SERVER_DIR/event"/{config,logs}
 
     cat > "$SERVER_DIR/event/config/event.json" <<CFG
 {
