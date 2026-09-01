@@ -618,7 +618,7 @@ download_mod_from_modrinth() {
     local chosen
     chosen=$(find_compatible_mod_file "$json_tmp" 2>/dev/null) || {
         rm -f "$json_tmp"
-        warn "No compatible version found for $mod_name (MC $mc_version, $loader)"
+        log "Skipping $mod_name (no build for MC $mc_version)"
         return 1
     }
     rm -f "$json_tmp"
@@ -842,6 +842,9 @@ main() {
         "lithium:Lithium"
         "ferrite-core:FerriteCore"
         "krypton:Krypton"
+        "lazydfu:LazyDFU"
+        "memoryleakfix:MemoryLeakFix"
+        "smoothboot-fabric:Smooth Boot"
     )
 
     for entry in "${MODRINTH_MODS[@]}"; do
@@ -859,7 +862,7 @@ main() {
         ok "$MODS_DOWNLOADED performance mod(s) installed"
     fi
     if [ "$MODS_FAILED" -gt 0 ]; then
-        warn "$MODS_FAILED mod(s) could not be downloaded (may not support MC $MC_VERSION)"
+        log "$MODS_FAILED mod(s) skipped (no build for MC $MC_VERSION)"
     fi
     echo ""
 
