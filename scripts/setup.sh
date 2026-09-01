@@ -24,25 +24,17 @@ local_ip() {
     [ -n "$ip" ] && printf '%s\n' "$ip" || printf '%s\n' "your-ip-here"
 }
 
-select_version() {
+build_series() {
     local manifest="$1"
-    local version="${MC_VERSION:-}"
-    if [ -n "$version" ]; then
-        echo "$version"
-        return 0
-    fi
-
-    local list_tmp
-    list_tmp=$(mktemp)
-    python3 - "$manifest" "$list_tmp" <<'PY'
+    python3 - "$manifest" <<'PY'
 import json, re, sys
 d = json.load(open(sys.argv[1]))
-name3 = {
-    (1, 21, 4): "The Garden Awakens",
-}
-name2 = {
+custom = {
     (26, 2): "Chaos Cubed",
     (26, 1): "Tiny Takeover",
+    (1, 21, 4): "The Garden Awakens",
+}
+names = {
     (1, 0): "Adventure Update",
     (1, 1): "Adventure Update",
     (1, 2): "The Update that Changed the World",
@@ -72,30 +64,63 @@ def parse(vid):
         return None
     return int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
 def label(p):
-    if p in name3:
-        return name3[p]
-    if p[:2] in name2:
-        return name2[p[:2]]
+    if p in custom:
+        return custom[p]
+    if p[:2] in names:
+        return names[p[:2]]
     return ""
-rows = []
+series = {}
+base_rt = {}
 for v in d["versions"]:
     if v["type"] != "release":
         continue
     p = parse(v["id"])
     if not p:
         continue
-    name = label(p)
-    rows.append((v["releaseTime"], "%s\t%s\t%s" % (v["id"], name, v["releaseTime"][:4])))
-rows.sort(reverse=True)
-open(sys.argv[2], "w").write("\n".join(line for _, line in rows))
+    ma, mi, pa = p
+    if ma == 1 and mi < 14:
+        continue
+    if ma == 0 or (ma == 1 and mi == 0):
+        continue
+    base = (ma, mi)
+    series.setdefault(base, []).append((p, v["releaseTime"]))
+for base, rows in series.items():
+    rows.sort(key=lambda r: r[0], reverse=True)
+    base_rt[base] = max(r[1] for _, r in rows)
+ordered = sorted(series.items(), key=lambda kv: base_rt[kv[0]], reverse=True)
+out = []
+for base, rows in ordered:
+    name = label((base[0], base[1], 0))
+    if len(rows) == 1:
+        only = rows[0][0]
+        if len(only) == 3 and only[2] == 0:
+            vid = ".".join(str(x) for x in only[:2])
+        else:
+            vid = ".".join(str(x) for x in only)
+        out.append((vid + (" - " + name if name else ""), vid))
+    else:
+        vid = ".".join(str(x) for x in base)
+        out.append((vid + (" - " + name if name else ""), "series:" + vid))
+import sys
+for label, sel in out:
+    sys.stdout.write("{}\t{}\n".format(label, sel))
 PY
+}
 
-    mapfile -t ENTRIES < "$list_tmp"
-    rm -f "$list_tmp"
+select_version() {
+    local manifest="$1"
+    local version="${MC_VERSION:-}"
+    if [ -n "$version" ]; then
+        echo "$version"
+        return 0
+    fi
 
-    local latest_hint=""
-    if [ "${#ENTRIES[@]}" -gt 0 ]; then
-        latest_hint="${ENTRIES[0]%%$'\t'*}"
+    build_series "$manifest" > /tmp/csmc-series.txt
+    local line label sel base_id idx e ma mi
+    mapfile -t SERIES < /tmp/csmc-series.txt
+
+    if [ "${#SERIES[@]}" -gt 0 ]; then
+        base_id="${SERIES[0]#*$'\t'}"
     fi
 
     while true; do
@@ -103,33 +128,22 @@ PY
         echo "  Minecraft Co-op Speedrun - Server Setup" >&2
         wide_separator >&2
         echo "" >&2
-        echo "  Select Minecraft version:" >&2
-        echo "  (Fabric requires 1.14.4 or newer; older versions will fail to install)" >&2
-        echo "" >&2
-        printf "    1) latest (currently %s)\n" "$latest_hint" >&2
-        local idx=2
-        local e id name year
-        for e in "${ENTRIES[@]}"; do
-            IFS=$'\t' read -r id name year <<< "$e"
-            printf "  %3d) %s" "$idx" "$id" >&2
-            if [ -n "$name" ]; then
-                printf " - %s" "$name" >&2
-            fi
-            if [ -n "$year" ]; then
-                printf " (%s)" "$year" >&2
-            fi
-            printf "\n" >&2
+        echo "  Which major Minecraft version do you want?" >&2
+        printf "    1) latest (currently %s)\n" "${base_id#series:}" >&2
+        idx=2
+        for line in "${SERIES[@]}"; do
+            label="${line%%$'\t'*}"
+            printf "  %3d) %s\n" "$idx" "$label" >&2
             idx=$((idx + 1))
         done
         echo "" >&2
-        printf "  Enter choice (number, version id, or q): " >&2
+        printf "  Enter the number (or q to quit): " >&2
         read -r choice || {
             echo "" >&2
             warn "No input received, aborting setup"
             return 1
         }
         echo "" >&2
-
         if [ "$choice" = "q" ] || [ "$choice" = "quit" ]; then
             warn "Setup aborted"
             return 1
@@ -139,24 +153,85 @@ PY
             return 0
         fi
         if echo "$choice" | grep -qP '^\d+$'; then
-            idx=$((choice - 2))
-            if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#ENTRIES[@]}" ]; then
-                echo "${ENTRIES[$idx]%%$'\t'*}"
+            num=$((choice - 2))
+            if [ "$num" -ge 0 ] && [ "$num" -lt "${#SERIES[@]}" ]; then
+                sel="${SERIES[$num]#*$'\t'}"
+                if [ "${sel#series:}" != "$sel" ]; then
+                    select_patch "$manifest" "${sel#series:}"
+                    return $?
+                fi
+                echo "$sel"
                 return 0
             fi
             warn "Invalid choice: $choice"
             continue
         fi
-        local matched=""
-        for e in "${ENTRIES[@]}"; do
-            if [ "$choice" = "${e%%$'\t'*}" ]; then
-                matched="$choice"
-                break
-            fi
+        warn "Invalid choice: $choice"
+    done
+}
+
+select_patch() {
+    local manifest="$1" base="$2"
+    local version="${MC_VERSION:-}"
+    local list_tmp
+    list_tmp=$(mktemp)
+    python3 - "$manifest" "$base" "$list_tmp" <<'PY'
+import json, re, sys
+d = json.load(open(sys.argv[1]))
+base = tuple(int(x) for x in sys.argv[2].split("."))
+def parse(vid):
+    m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?$", vid)
+    if not m:
+        return None
+    p = (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+    return p if p[:2] == base else None
+rows = []
+for vid in d["versions"]:
+    if vid["type"] != "release":
+        continue
+    p = parse(vid["id"])
+    if p:
+        rows.append((vid["releaseTime"], vid["id"]))
+rows.sort(reverse=True)
+open(sys.argv[3], "w").write("\n".join(v for _, v in rows))
+PY
+
+    mapfile -t PATCHES < "$list_tmp"
+    rm -f "$list_tmp"
+    if [ "${#PATCHES[@]}" -le 1 ]; then
+        echo "${PATCHES[0]}"
+        return 0
+    fi
+
+    while true; do
+        wide_separator >&2
+        echo "  Minecraft Co-op Speedrun - Server Setup" >&2
+        wide_separator >&2
+        echo "" >&2
+        printf "  Which %s version do you want?\n" "$base" >&2
+        idx=1
+        local p
+        for p in "${PATCHES[@]}"; do
+            printf "  %3d) %s\n" "$idx" "$p" >&2
+            idx=$((idx + 1))
         done
-        if [ -n "$matched" ]; then
-            echo "$matched"
-            return 0
+        echo "" >&2
+        printf "  Enter the number (or q to go back): " >&2
+        read -r choice || {
+            echo "" >&2
+            warn "No input received, aborting setup"
+            return 1
+        }
+        echo "" >&2
+        if [ "$choice" = "q" ] || [ "$choice" = "quit" ]; then
+            return 1
+        fi
+        if echo "$choice" | grep -qP '^\d+$'; then
+            num=$((choice - 1))
+            if [ "$num" -ge 0 ] && [ "$num" -lt "${#PATCHES[@]}" ]; then
+                echo "${PATCHES[$num]}"
+                return 0
+            fi
         fi
         warn "Invalid choice: $choice"
     done

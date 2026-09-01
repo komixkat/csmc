@@ -9,7 +9,9 @@ cd scripts
 ./setup.sh
 ```
 
-It asks you to pick a Minecraft version from the full list of every official release (sorted newest first, with its release name, e.g. "26.2 - Chaos Cubed"), or pick `latest`. Then it generates a random seed and opens it on ChunkBase for approval, downloads the correct local Java (read from Mojang data, with a built-in fallback table), Fabric, and compatible performance mods into `server/`. The first launch generates the world from the approved seed.
+Version selection is two-step: first pick a major version (every major.minor with a Fabric-compatible build, sorted newest first with its release name, e.g. "1.16 - Nether Update"), then pick a specific patch release within it (e.g. 1.16.5 vs 1.16.1), or pick `latest`. Then it generates a random seed and opens it on ChunkBase for approval, downloads the correct local Java (read from Mojang data, with a built-in fallback table), Fabric, and compatible performance mods into `server/`. The first launch generates the world from the approved seed.
+
+The setup needs adventure mode and the world border. Adventure mode arrived in 1.4.2 and the world border in 1.9, but Fabric requires 1.14.4+, so every version offered on the first screen supports all gameplay used here. The enderdragon and blaze rods exist in every version back to 1.0.
 
 Players spawn at the natural world spawn in adventure mode with a small world border around it, so nobody can wander off. Expand the border for a race with `/worldborder set <diameter>` in the server console.
 
