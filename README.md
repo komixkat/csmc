@@ -9,7 +9,7 @@ cd scripts
 ./setup.sh
 ```
 
-It will ask you to pick a Minecraft version (1.16.1 or latest), generate a random seed and open it on ChunkBase for approval, then download a local Java, Fabric, Fabric API, and compatible performance mods into `server/`. The first launch generates the world from the approved seed.
+It asks you to pick a Minecraft version from the full list of every official release (sorted newest first, with its release name, e.g. "26.2 - Chaos Cubed"), or pick `latest`. Then it generates a random seed and opens it on ChunkBase for approval, downloads the correct local Java (read from Mojang data, with a built-in fallback table), Fabric, and compatible performance mods into `server/`. The first launch generates the world from the approved seed.
 
 Players spawn at the natural world spawn in adventure mode with a small world border around it, so nobody can wander off. Expand the border for a race with `/worldborder set <diameter>` in the server console.
 

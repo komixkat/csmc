@@ -25,15 +25,78 @@ local_ip() {
 }
 
 select_version() {
+    local manifest="$1"
     local version="${MC_VERSION:-}"
     if [ -n "$version" ]; then
         echo "$version"
         return 0
     fi
 
+    local list_tmp
+    list_tmp=$(mktemp)
+    python3 - "$manifest" "$list_tmp" <<'PY'
+import json, re, sys
+d = json.load(open(sys.argv[1]))
+name3 = {
+    (1, 21, 4): "The Garden Awakens",
+}
+name2 = {
+    (26, 2): "Chaos Cubed",
+    (26, 1): "Tiny Takeover",
+    (1, 0): "Adventure Update",
+    (1, 1): "Adventure Update",
+    (1, 2): "The Update that Changed the World",
+    (1, 3): "1.3 Update",
+    (1, 4): "Pretty Scary Update",
+    (1, 5): "Redstone Update",
+    (1, 6): "Horse Update",
+    (1, 7): "The Update that Changed the World",
+    (1, 8): "Bountiful Update",
+    (1, 9): "Combat Update",
+    (1, 10): "Frostburn Update",
+    (1, 11): "Exploration Update",
+    (1, 12): "World of Color Update",
+    (1, 13): "Update Aquatic",
+    (1, 14): "Village & Pillage",
+    (1, 15): "Buzzy Bees",
+    (1, 16): "Nether Update",
+    (1, 17): "Caves & Cliffs",
+    (1, 18): "Caves & Cliffs",
+    (1, 19): "The Wild Update",
+    (1, 20): "Trails & Tales",
+    (1, 21): "Tricky Trials",
+}
+def parse(vid):
+    m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?$", vid)
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
+def label(p):
+    if p in name3:
+        return name3[p]
+    if p[:2] in name2:
+        return name2[p[:2]]
+    return ""
+rows = []
+for v in d["versions"]:
+    if v["type"] != "release":
+        continue
+    p = parse(v["id"])
+    if not p:
+        continue
+    name = label(p)
+    rows.append((v["releaseTime"], "%s\t%s\t%s" % (v["id"], name, v["releaseTime"][:4])))
+rows.sort(reverse=True)
+open(sys.argv[2], "w").write("\n".join(line for _, line in rows))
+PY
+
+    mapfile -t ENTRIES < "$list_tmp"
+    rm -f "$list_tmp"
+
     local latest_hint=""
-    latest_hint=$(fetch_latest_mc)
-    [ -n "$latest_hint" ] || latest_hint="unknown (offline)"
+    if [ "${#ENTRIES[@]}" -gt 0 ]; then
+        latest_hint="${ENTRIES[0]%%$'\t'*}"
+    fi
 
     while true; do
         wide_separator >&2
@@ -41,11 +104,25 @@ select_version() {
         wide_separator >&2
         echo "" >&2
         echo "  Select Minecraft version:" >&2
+        echo "  (Fabric requires 1.14.4 or newer; older versions will fail to install)" >&2
         echo "" >&2
-        echo "    1) 1.16.1  (stable, easy)" >&2
-        echo "    2) latest  (currently $latest_hint)" >&2
+        printf "    1) latest (currently %s)\n" "$latest_hint" >&2
+        local idx=2
+        local e id name year
+        for e in "${ENTRIES[@]}"; do
+            IFS=$'\t' read -r id name year <<< "$e"
+            printf "  %3d) %s" "$idx" "$id" >&2
+            if [ -n "$name" ]; then
+                printf " - %s" "$name" >&2
+            fi
+            if [ -n "$year" ]; then
+                printf " (%s)" "$year" >&2
+            fi
+            printf "\n" >&2
+            idx=$((idx + 1))
+        done
         echo "" >&2
-        printf "  Enter choice [1/2]: " >&2
+        printf "  Enter choice (number, version id, or q): " >&2
         read -r choice || {
             echo "" >&2
             warn "No input received, aborting setup"
@@ -53,11 +130,35 @@ select_version() {
         }
         echo "" >&2
 
-        case "$choice" in
-            1) echo "1.16.1"; return 0 ;;
-            2) echo "latest"; return 0 ;;
-            *) warn "Invalid choice: $choice" ;;
-        esac
+        if [ "$choice" = "q" ] || [ "$choice" = "quit" ]; then
+            warn "Setup aborted"
+            return 1
+        fi
+        if [ "$choice" = "1" ]; then
+            echo "latest"
+            return 0
+        fi
+        if echo "$choice" | grep -qP '^\d+$'; then
+            idx=$((choice - 2))
+            if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#ENTRIES[@]}" ]; then
+                echo "${ENTRIES[$idx]%%$'\t'*}"
+                return 0
+            fi
+            warn "Invalid choice: $choice"
+            continue
+        fi
+        local matched=""
+        for e in "${ENTRIES[@]}"; do
+            if [ "$choice" = "${e%%$'\t'*}" ]; then
+                matched="$choice"
+                break
+            fi
+        done
+        if [ -n "$matched" ]; then
+            echo "$matched"
+            return 0
+        fi
+        warn "Invalid choice: $choice"
     done
 }
 
@@ -78,22 +179,60 @@ resolve_latest_version() {
 
 java_version_for_mc() {
     local mc="$1"
-    local major
-    major=$(echo "$mc" | cut -d. -f1)
-    if [ "$major" -ge 2 ] 2>/dev/null; then
+    local major minor patch
+    major=$(echo "$mc" | cut -d. -f1 | grep -oP '^\d+')
+    minor=$(echo "$mc" | cut -d. -f2 | grep -oP '^\d+')
+    patch=$(echo "$mc" | cut -d. -f3 | grep -oP '^\d+')
+    major=${major:-0}
+    minor=${minor:-0}
+    patch=${patch:-0}
+
+    if [ "$major" -ge 26 ] 2>/dev/null; then
         echo 25
     elif [ "$major" -eq 1 ] 2>/dev/null; then
-        local minor
-        minor=$(echo "$mc" | cut -d. -f2)
-        if [ "$minor" -ge 21 ] 2>/dev/null; then
-            echo 21
-        elif [ "$minor" -ge 17 ] 2>/dev/null; then
-            echo 17
-        else
+        if [ "$minor" -le 16 ] 2>/dev/null; then
             echo 8
+        elif [ "$minor" -le 19 ] 2>/dev/null; then
+            echo 17
+        elif [ "$minor" -eq 20 ] 2>/dev/null; then
+            if [ "$patch" -le 4 ] 2>/dev/null; then
+                echo 17
+            else
+                echo 21
+            fi
+        else
+            echo 21
         fi
     else
-        echo 25
+        echo 8
+    fi
+}
+
+manifest_java_version() {
+    local manifest="$1"
+    local mc_version="$2"
+    local url
+    url=$(python3 - "$manifest" "$mc_version" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+for v in d["versions"]:
+    if v["id"] == sys.argv[2] and v["type"] == "release":
+        print(v["url"])
+        break
+PY
+)
+    [ -n "$url" ] || return 1
+    curl -fsSL --max-time 15 "$url" 2>/dev/null \
+        | grep -oP '"javaVersion":\s*\{[^}]*"majorVersion":\s*\K[0-9]+' | head -n 1
+}
+
+warn_old_for_fabric() {
+    local mc="$1"
+    local major minor
+    major=$(echo "$mc" | cut -d. -f1 | grep -oP '^\d+')
+    minor=$(echo "$mc" | cut -d. -f2 | grep -oP '^\d+')
+    if [ -n "$major" ] && [ "$major" -eq 1 ] 2>/dev/null && [ -n "$minor" ] && [ "$minor" -lt 14 ] 2>/dev/null; then
+        warn "MC $mc predates Fabric (1.14.4+); the Fabric install will likely fail"
     fi
 }
 
@@ -738,13 +877,29 @@ apply_property() {
 }
 
 main() {
-    MC_VERSION=$(select_version)
+    log "Fetching Minecraft version list from Mojang..."
+    local manifest="/tmp/csmc-manifest.json"
+    curl -fsSL --max-time 20 \
+        "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json" \
+        -o "$manifest" \
+        || die "Failed to fetch the Minecraft version manifest"
+
+    MC_VERSION=$(select_version "$manifest")
 
     if [ "$MC_VERSION" = "latest" ]; then
         MC_VERSION=$(resolve_latest_version)
     fi
 
+    warn_old_for_fabric "$MC_VERSION"
+
     JAVA_VERSION="${JAVA_VERSION:-$(java_version_for_mc "$MC_VERSION")}"
+    local manifest_java
+    if manifest_java=$(manifest_java_version "$manifest" "$MC_VERSION" 2>/dev/null); then
+        if [ -n "$manifest_java" ] && echo "$manifest_java" | grep -qxE '8|17|21|25'; then
+            JAVA_VERSION=$manifest_java
+            log "Mojang lists Java $JAVA_VERSION for MC $MC_VERSION"
+        fi
+    fi
     EVENT_SEED=$(select_seed "$MC_VERSION")
     JAVA_MEMORY="${JAVA_MEMORY:-14G}"
     VIEW_DISTANCE="${VIEW_DISTANCE:-16}"
