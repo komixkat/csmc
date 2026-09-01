@@ -600,7 +600,7 @@ level-seed=${seed}
 gamemode=adventure
 force-gamemode=true
 difficulty=normal
-pvp=false
+pvp=true
 spawn-protection=${spawn_prot}
 white-list=false
 enforce-whitelist=false
@@ -831,13 +831,14 @@ t = u8()
 _ = name()
 root = tag(t)
 data_tag = root['Data'] if 'Data' in root else root
-print('%s %s' % (data_tag['SpawnX'], data_tag['SpawnZ']))
+print('%s %s %s' % (data_tag['SpawnX'], data_tag.get('SpawnY', 64), data_tag['SpawnZ']))
 PY
 }
 
 SPAWN_COORDS="$(world_spawn || true)"
 echo "[START] World spawn: $SPAWN_COORDS"
-echo "[START] Place a race border with: /worldborder center $SPAWN_COORDS  then  /worldborder set <diameter>"
+echo "[START] Players are held at spawn until the race starts (datapack csmc_hold)"
+echo "[START] Start the race: /function csmc_hold:release"
 
 echo "[START] Server address: $(local_ip):25565"
 
@@ -943,6 +944,132 @@ download_mod_from_modrinth() {
     return 0
 }
 
+write_hold_datapack() {
+    local level_dat="$SERVER_DIR/world/level.dat"
+    [ -f "$level_dat" ] || { warn "No world found, skipping hold datapack"; return 1; }
+    local spawn sx sy sz
+    spawn=$(python3 - "$level_dat" <<'PY'
+import gzip, struct, sys
+data = gzip.open(sys.argv[1], 'rb').read()
+pos = [0]
+def u8():
+    v = data[pos[0]]
+    pos[0] += 1
+    return v
+def u16():
+    v = struct.unpack('>H', data[pos[0]:pos[0]+2])[0]
+    pos[0] += 2
+    return v
+def s16():
+    v = struct.unpack('>h', data[pos[0]:pos[0]+2])[0]
+    pos[0] += 2
+    return v
+def s32():
+    v = struct.unpack('>i', data[pos[0]:pos[0]+4])[0]
+    pos[0] += 4
+    return v
+def s64():
+    v = struct.unpack('>q', data[pos[0]:pos[0]+8])[0]
+    pos[0] += 8
+    return v
+def f32():
+    v = struct.unpack('>f', data[pos[0]:pos[0]+4])[0]
+    pos[0] += 4
+    return v
+def f64():
+    v = struct.unpack('>d', data[pos[0]:pos[0]+8])[0]
+    pos[0] += 8
+    return v
+def name():
+    n = u16()
+    v = data[pos[0]:pos[0]+n].decode('utf-8')
+    pos[0] += n
+    return v
+def tag(t):
+    if t == 0:
+        return None
+    if t == 1:
+        return u8()
+    if t == 2:
+        return s16()
+    if t == 3:
+        return s32()
+    if t == 4:
+        return s64()
+    if t == 5:
+        return f32()
+    if t == 6:
+        return f64()
+    if t == 7:
+        n = s32()
+        v = data[pos[0]:pos[0]+n]
+        pos[0] += n
+        return v
+    if t == 8:
+        return name()
+    if t == 9:
+        et = u8()
+        n = s32()
+        return [tag(et) for _ in range(n)]
+    if t == 10:
+        out = {}
+        while True:
+            tt = u8()
+            if tt == 0:
+                break
+            k = name()
+            out[k] = tag(tt)
+        return out
+    if t == 11:
+        n = s32()
+        return [s32() for _ in range(n)]
+    if t == 12:
+        n = s32()
+        return [s64() for _ in range(n)]
+t = u8()
+_ = name()
+root = tag(t)
+data_tag = root['Data'] if 'Data' in root else root
+print('%s %s %s' % (data_tag.get('SpawnX', 0), data_tag.get('SpawnY', 64), data_tag.get('SpawnZ', 0)))
+PY
+)
+    read -r sx sy sz <<< "$spawn" || true
+    sy=$((sy + 1))
+    local radius="${START_BORDER:-10}"
+    local pack_dir="$SERVER_DIR/world/datapacks/csmc_hold"
+    mkdir -p "$pack_dir/data/csmc_hold/functions" "$pack_dir/data/csmc_hold/tags/functions"
+
+    cat > "$pack_dir/pack.mcmeta" <<META
+{
+  "pack": {
+    "pack_format": 4,
+    "description": "Hold players at spawn until the race starts"
+  }
+}
+META
+
+    cat > "$pack_dir/data/csmc_hold/tags/functions/tick.json" <<TICK
+{
+  "values": [
+    "csmc_hold:tick"
+  ]
+}
+TICK
+
+    cat > "$pack_dir/data/csmc_hold/functions/tick.mcfunction" <<TICKFN
+execute positioned $(( sx - radius )) 0 $(( sz - radius )) as @a unless entity @s[dx=$(( radius * 2 )),dy=512,dz=$(( radius * 2 ))] run execute if entity @s[gamemode=adventure] run tp @s $sx $sy $sz
+TICKFN
+
+    cat > "$pack_dir/data/csmc_hold/functions/release.mcfunction" <<REL
+gamemode survival @a
+tellraw @a {"text":"GO! Race started, everyone to survival","color":"green","bold":true}
+REL
+
+    cat > "$pack_dir/data/csmc_hold/functions/arm.mcfunction" <<ARM
+gamemode adventure @a
+ARM
+}
+
 main() {
     log "Fetching Minecraft version list from Mojang..."
     local manifest="/tmp/csmc-manifest.json"
@@ -972,7 +1099,6 @@ main() {
     VIEW_DISTANCE="${VIEW_DISTANCE:-16}"
     MAX_PLAYERS="${MAX_PLAYERS:-30}"
     SERVER_IP=$(local_ip)
-    RACE_BORDER="${RACE_BORDER:-59999968}"
     START_BORDER="${START_BORDER:-10}"
 
     separator
@@ -1111,7 +1237,6 @@ EULA
   "seed": "$EVENT_SEED",
   "max_players": $MAX_PLAYERS,
   "start_border_diameter": $START_BORDER,
-  "race_border_diameter": $RACE_BORDER,
   "spawn_protection": 10,
   "java_memory": "$JAVA_MEMORY",
   "view_distance": $VIEW_DISTANCE
@@ -1163,6 +1288,12 @@ CFG
 
     echo ""
     ok "Initial launch complete, server shut down cleanly"
+    echo ""
+
+    log "Installing hold-at-spawn datapack..."
+    if write_hold_datapack; then
+        ok "csmc_hold datapack installed into the world"
+    fi
     echo ""
 
     log "Creating convenience symlink..."
