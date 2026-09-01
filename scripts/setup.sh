@@ -848,25 +848,32 @@ setup_world_border() {
         kill -0 "$SERVER_PID" 2>/dev/null || return
         sleep 2
     done
+    sleep 5
     local sx sz
     read -r sx sz <<< "$(world_spawn)"
     send_cmd "/worldborder center $sx $sz"
+    sleep 1
     send_cmd "/worldborder set $START_BORDER"
     echo "[SPEEDRUN] World border $START_BORDER centered at spawn ($sx,$sz)"
 }
 
 event_seed() {
-    grep -oP '"seed":\s*\K\d+' "$SERVER_DIR/event/config/event.json" 2>/dev/null | head -n 1 || echo ""
+    [ -f "$SERVER_DIR/event/config/event.json" ] || { echo ""; return; }
+    python3 - "$SERVER_DIR/event/config/event.json" <<'PY' 2>/dev/null
+import json, sys
+print(json.load(open(sys.argv[1])).get("seed", ""))
+PY
 }
 
 run_timer() {
+    sleep 3
     while kill -0 "$SERVER_PID" 2>/dev/null; do
         local start epoch elapsed
         start=$(cat "$SERVER_DIR/event/results/timer.state" 2>/dev/null || echo "")
         if echo "$start" | grep -qP '^\d+$'; then
             epoch=$(date +%s)
             elapsed=$((epoch - start))
-            send_cmd "/scoreboard players set speedrun_time __race__ $elapsed"
+            send_cmd "/scoreboard players set __race__ speedrun_time $elapsed"
         fi
         sleep 1
     done
@@ -874,10 +881,10 @@ run_timer() {
 
 run_achievements() {
     tail -n 0 -F "$SERVER_DIR/logs/latest.log" 2>/dev/null | while read -r line; do
-        if [ -f "$SERVER_DIR/event/results/active.state" ] && echo "$line" | grep -q "has just earned the achievement"; then
+        if [ -f "$SERVER_DIR/event/results/active.state" ] && echo "$line" | grep -qE "made the advancement|just earned the achievement"; then
             local who ach out
-            who=$(echo "$line" | grep -oP '>\K[^<]+(?= has just earned)' | head -n 1)
-            ach=$(echo "$line" | grep -oP '\[\K[^\]]+(?=\])' | head -n 1)
+            who=$(echo "$line" | sed -E 's/^.*: ([^ ]+) has (made the advancement|just earned the achievement).*/\1/')
+            ach=$(echo "$line" | grep -oE '\[[^]]+\]$' | tr -d '[]')
             if [ -n "$who" ] && [ -n "$ach" ]; then
                 out=$(cat "$SERVER_DIR/event/results/last-achievement.txt" 2>/dev/null || echo "")
                 if [ "$out" != "$ach" ]; then
@@ -902,7 +909,7 @@ speedrun_start() {
     apply_setting pvp true
     send_cmd "/reload"
     send_cmd "/gamemode survival @a"
-    send_cmd "/scoreboard add speedrun_time count"
+    send_cmd "/scoreboard objectives add speedrun_time dummy"
     send_cmd "/scoreboard objectives setdisplay sidebar speedrun_time"
     echo "$(date +%s)" > "$SERVER_DIR/event/results/timer.state"
     echo active > "$SERVER_DIR/event/results/active.state"
