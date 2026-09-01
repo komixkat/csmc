@@ -567,56 +567,27 @@ START
 }
 
 find_compatible_mod_file() {
-    python3 - "$1" "$2" <<'PY'
-import json, sys, re
-
-def parse_mc(s):
-    m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?$", s)
-    if not m:
-        return None
-    return int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
-
+    python3 - "$1" <<'PY'
+import json, sys
 data = json.load(open(sys.argv[1]))
-major, minor, target_patch = parse_mc(sys.argv[2])
-
-def series_patch(gv_list):
-    best = None
-    for gv in gv_list:
-        p = parse_mc(gv)
-        if p and p[0] == major and p[1] == minor:
-            if best is None or p[2] > best:
-                best = p[2]
-    return best
-
-exact_hit = None
-lower_hit = None
-upper_hit = None
+best = None
+best_key = None
 for v in data:
-    patch = series_patch(v.get("game_versions", []))
-    if patch is None:
-        continue
     url = None
     for f in v.get("files", []):
-        if f["url"].endswith(".jar"):
+        if f.get("url", "").endswith(".jar"):
             url = f["url"]
             break
     if not url:
         continue
-    entry = (url, v.get("version_number", ""), patch)
-    if patch == target_patch:
-        if exact_hit is None or entry[1] > exact_hit[1]:
-            exact_hit = entry
-    elif patch < target_patch:
-        if lower_hit is None or patch > lower_hit[2]:
-            lower_hit = entry
-    else:
-        if upper_hit is None or patch < upper_hit[2]:
-            upper_hit = entry
-
-found = exact_hit or lower_hit or upper_hit
-if found is None:
+    release = 0 if v.get("version_type") == "release" else 1
+    key = (release, v.get("date_published", ""))
+    if best_key is None or key[0] < best_key[0] or (key[0] == best_key[0] and key[1] > best_key[1]):
+        best_key = key
+        best = (url, v.get("version_number", ""))
+if best is None:
     sys.exit(1)
-print(f"{found[0]}|{found[1]}")
+print(f"{best[0]}|{best[1]}")
 PY
 }
 
@@ -627,15 +598,9 @@ download_mod_from_modrinth() {
     local loader="$4"
     local mods_dir="$5"
 
-    local series
-    series=$(echo "$mc_version" | grep -oP '^\d+\.\d+') || {
-        warn "Unparseable MC version for $mod_name"
-        return 1
-    }
-
     local versions_json
     versions_json=$(curl -fsSL \
-        "https://api.modrinth.com/v2/project/${project_id}/version?loaders=%5B%22${loader}%22%5D" \
+        "https://api.modrinth.com/v2/project/${project_id}/version?loaders=%5B%22${loader}%22%5D&game_versions=%5B%22${mc_version}%22%5D" \
         2>/dev/null) || {
         warn "Modrinth API request failed for $mod_name"
         return 1
@@ -651,7 +616,7 @@ download_mod_from_modrinth() {
     printf '%s' "$versions_json" > "$json_tmp"
 
     local chosen
-    chosen=$(find_compatible_mod_file "$json_tmp" "$series" 2>/dev/null) || {
+    chosen=$(find_compatible_mod_file "$json_tmp" 2>/dev/null) || {
         rm -f "$json_tmp"
         warn "No compatible version found for $mod_name (MC $mc_version, $loader)"
         return 1
@@ -877,8 +842,6 @@ main() {
         "lithium:Lithium"
         "ferrite-core:FerriteCore"
         "krypton:Krypton"
-        "servercore:ServerCore"
-        "noisium:Noisium"
     )
 
     for entry in "${MODRINTH_MODS[@]}"; do
