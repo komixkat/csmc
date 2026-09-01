@@ -23,21 +23,29 @@ MC_VERSION=1.16.1 EVENT_SEED=123 JAVA_MEMORY=14G VIEW_DISTANCE=16 MAX_PLAYERS=30
 
 Players are held at spawn in adventure mode by the `csmc_hold` datapack until the race starts.
 
-Run these in the server console (the terminal running `start.sh`), or in-game in chat as an operator with `operator` permission. `/function` works from both.
+The commands below run from the server console (the terminal running `start.sh`) or in-game in chat as an operator with `operator` permission. `/function` works from both.
 
-Race start. Everyone goes to survival and the hold is disabled:
+### Race start
 
 ```bash
 /function csmc_hold:release
 ```
 
-Back to adventure for the next race:
+Everyone switches to survival, the hold is disabled, and the race timer starts.
+
+### Next race
 
 ```bash
 /function csmc_hold:arm
 ```
 
-PvP is on by default. Flags:
+Back to adventure mode for the next race. The timer stops and resets to zero.
+
+### Timer
+
+The in-game timer shows on a gold action bar while you run, in `h:m:s.cs` form (centisecond = one hundredth of a second). It also tracks total seconds on the sidebar. It starts with `release` and resets with `arm` or `release`.
+
+## Server flags
 
 ```bash
 ./start.sh --no-whitelist
@@ -91,6 +99,6 @@ rm -rf ../backups
 - `scripts/setup.sh` - installs the server
 - `scripts/reset.sh` - wipes the server into `backups/`
 - `server/` - the server (Java, Fabric, mods, world, config), created by setup
-- `server/world/datapacks/csmc_hold/` - the spawn-hold datapack, created by setup
+- `server/world/datapacks/csmc_hold/` - the spawn-hold datapack and race timer, created by setup
 - `server/event/config/event.json` - event settings (seed, memory, view distance)
 - `start.sh` - shortcut to start the server, created by setup

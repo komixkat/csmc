@@ -1056,18 +1056,54 @@ META
 }
 TICK
 
+    cat > "$pack_dir/data/minecraft/tags/functions/load.json" <<LOADTAG
+{
+  "values": [
+    "csmc_hold:load"
+  ]
+}
+LOADTAG
+
     cat > "$pack_dir/data/csmc_hold/functions/tick.mcfunction" <<TICKFN
 execute positioned $(( sx - radius )) 0 $(( sz - radius )) as @a unless entity @s[dx=$(( radius * 2 )),dy=512,dz=$(( radius * 2 ))] run execute if entity @s[gamemode=adventure] run tp @s $sx $sy $sz
+execute if entity @a[gamemode=survival] run function csmc_hold:step
 TICKFN
+
+    cat > "$pack_dir/data/csmc_hold/functions/step.mcfunction" <<STEP
+scoreboard players add c csmc_time 5
+execute if score c csmc_time matches 100 run scoreboard players set c csmc_time 0
+execute if score c csmc_time matches 0 run scoreboard players add s csmc_time 1
+execute if score c csmc_time matches 0 run scoreboard players add run csmc_secs 1
+execute if score s csmc_time matches 60 run scoreboard players set s csmc_time 0
+execute if score s csmc_time matches 60 run scoreboard players add m csmc_time 1
+execute if score m csmc_time matches 60 run scoreboard players set m csmc_time 0
+execute if score m csmc_time matches 60 run scoreboard players add h csmc_time 1
+title @a actionbar {"text":"Time: ","color":"gold","extra":[{"score":{"name":"h","objective":"csmc_time"}},{"text":":"},{"score":{"name":"m","objective":"csmc_time"}},{"text":":"},{"score":{"name":"s","objective":"csmc_time"}},{"text":"."},{"score":{"name":"c","objective":"csmc_time"}}]}
+STEP
 
     cat > "$pack_dir/data/csmc_hold/functions/release.mcfunction" <<REL
 gamemode survival @a
+scoreboard players set c csmc_time 0
+scoreboard players set s csmc_time 0
+scoreboard players set m csmc_time 0
+scoreboard players set h csmc_time 0
+scoreboard players set run csmc_secs 0
 tellraw @a {"text":"GO! Race started, everyone to survival","color":"green","bold":true}
 REL
 
     cat > "$pack_dir/data/csmc_hold/functions/arm.mcfunction" <<ARM
 gamemode adventure @a
+scoreboard players set c csmc_time 0
+scoreboard players set s csmc_time 0
+scoreboard players set m csmc_time 0
+scoreboard players set h csmc_time 0
+scoreboard players set run csmc_secs 0
 ARM
+
+    cat > "$pack_dir/data/csmc_hold/functions/load.mcfunction" <<LOADFN
+scoreboard objectives setdisplay sidebar csmc_secs
+scoreboard objectives modify csmc_secs displayname {"text":"Time (s)"}
+LOADFN
 }
 
 main() {
@@ -1279,6 +1315,9 @@ CFG
         fi
     else
         ok "World generated, sending shutdown command..."
+        echo "scoreboard objectives add csmc_time dummy" >&3
+        echo "scoreboard objectives add csmc_secs dummy" >&3
+        sleep 1
         echo "stop" >&3
         wait "$server_pid" || true
     fi
