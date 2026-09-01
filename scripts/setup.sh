@@ -109,6 +109,50 @@ for label, sel in out:
 PY
 }
 
+drop_update_name() {
+    local base="$1"
+    local cached name
+    cached=$(grep -P "^${base}\t" /tmp/csmc-dropnames.txt 2>/dev/null | head -n 1)
+    if [ -n "$cached" ]; then
+        printf '%s' "${cached#*$'\t'}"
+        return 0
+    fi
+    name=$(curl -fsS --max-time 12 \
+        "https://minecraft.wiki/api.php?action=parse&page=Java_Edition_${base}&format=json&prop=wikitext" 2>/dev/null \
+        | python3 -c '
+import json, re, sys
+try:
+    wt = json.load(sys.stdin)["parse"]["wikitext"]["*"]
+except Exception:
+    sys.exit(1)
+m = re.search(r"\|\s*name\s*=\s*\[\[([^\]|]+)", wt)
+if not m:
+    m = re.search(r"\|\s*name\s*=\s*([^|\[\]\n]+)", wt)
+sys.stdout.write(m.group(1).strip() if m else "")
+')
+    if [ -n "$name" ]; then
+        printf '%s\t%s\n' "$base" "$name" >> /tmp/csmc-dropnames.txt
+    fi
+    printf '%s' "$name"
+    return 0
+}
+
+ordinal_word() {
+    case "$1" in
+        1) printf 'First' ;;
+        2) printf 'Second' ;;
+        3) printf 'Third' ;;
+        4) printf 'Fourth' ;;
+        5) printf 'Fifth' ;;
+        6) printf 'Sixth' ;;
+        7) printf 'Seventh' ;;
+        8) printf 'Eighth' ;;
+        9) printf 'Ninth' ;;
+        10) printf 'Tenth' ;;
+        *) printf '%sth' "$1" ;;
+    esac
+}
+
 select_version() {
     local manifest="$1"
     local version="${MC_VERSION:-}"
@@ -118,7 +162,29 @@ select_version() {
     fi
 
     build_series "$manifest" > /tmp/csmc-series.txt
+    : > /tmp/csmc-dropnames.txt
     local line label sel base_id idx e ma mi
+    local id base major name
+    {
+        while IFS=$'\t' read -r label sel; do
+            id="${sel#series:}"
+            case "$id" in
+                *.*.*) base="${id%.*}" ;;
+                *) base="$id" ;;
+            esac
+            major="${base%%.*}"
+            if [ "${major:-0}" -ge 2 ] && [[ "$label" != *" - "* ]]; then
+                name=$(drop_update_name "$base")
+                if [ -n "$name" ]; then
+                    label="$base - $name"
+                else
+                    label="$base - $(ordinal_word "${base#*.}") Drop $(( ${base%%.*} + 2000 ))"
+                fi
+            fi
+            printf '%s\t%s\n' "$label" "$sel"
+        done < /tmp/csmc-series.txt
+    } > /tmp/csmc-series2.txt
+    mv /tmp/csmc-series2.txt /tmp/csmc-series.txt
     mapfile -t SERIES < /tmp/csmc-series.txt
 
     if [ "${#SERIES[@]}" -gt 0 ]; then
