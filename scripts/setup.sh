@@ -1037,7 +1037,7 @@ PY
     sy=$((sy + 1))
     local radius="${START_BORDER:-10}"
     local pack_dir="$SERVER_DIR/world/datapacks/csmc_hold"
-    mkdir -p "$pack_dir/data/csmc_hold/functions" "$pack_dir/data/csmc_hold/tags/functions"
+    mkdir -p "$pack_dir/data/csmc_hold/functions" "$pack_dir/data/minecraft/tags/functions"
 
     cat > "$pack_dir/pack.mcmeta" <<META
 {
@@ -1048,7 +1048,7 @@ PY
 }
 META
 
-    cat > "$pack_dir/data/csmc_hold/tags/functions/tick.json" <<TICK
+    cat > "$pack_dir/data/minecraft/tags/functions/tick.json" <<TICK
 {
   "values": [
     "csmc_hold:tick"

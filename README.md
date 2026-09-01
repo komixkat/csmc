@@ -21,22 +21,53 @@ MC_VERSION=1.16.1 EVENT_SEED=123 JAVA_MEMORY=14G VIEW_DISTANCE=16 MAX_PLAYERS=30
 ./start.sh
 ```
 
-Players are held at spawn in adventure mode by the `csmc_hold` datapack until the race starts. In the server console:
+Players are held at spawn in adventure mode by the `csmc_hold` datapack until the race starts.
+
+Run these in the server console (the terminal running `start.sh`), or in-game in chat as an operator with `operator` permission. `/function` works from both.
+
+Race start. Everyone goes to survival and the hold is disabled:
 
 ```bash
-/function csmc_hold:release   # race start: everyone to survival, hold disabled
-/function csmc_hold:arm       # back to adventure for the next race
+/function csmc_hold:release
+```
+
+Back to adventure for the next race:
+
+```bash
+/function csmc_hold:arm
 ```
 
 PvP is on by default. Flags:
 
 ```bash
-./start.sh --no-whitelist   # whitelist off (default)
-./start.sh --whitelist      # whitelist on
-./start.sh --offline        # online-mode=false (default)
-./start.sh --online         # online-mode=true
+./start.sh --no-whitelist
+```
+
+Whitelist off (default).
+
+```bash
+./start.sh --whitelist
+```
+
+Whitelist on.
+
+```bash
+./start.sh --offline
+```
+
+online-mode=false (default).
+
+```bash
+./start.sh --online
+```
+
+online-mode=true.
+
+```bash
 ./start.sh --help
 ```
+
+Show usage.
 
 ## Reset
 
