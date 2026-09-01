@@ -1133,10 +1133,10 @@ TICKFN
 scoreboard players add c csmc_time 5
 execute if score c csmc_time matches 100 run scoreboard players set c csmc_time 0
 execute if score c csmc_time matches 0 run scoreboard players add s csmc_time 1
-execute if score s csmc_time matches 60 run scoreboard players set s csmc_time 0
 execute if score s csmc_time matches 60 run scoreboard players add m csmc_time 1
-execute if score m csmc_time matches 60 run scoreboard players set m csmc_time 0
+execute if score s csmc_time matches 60 run scoreboard players set s csmc_time 0
 execute if score m csmc_time matches 60 run scoreboard players add h csmc_time 1
+execute if score m csmc_time matches 60 run scoreboard players set m csmc_time 0
 STEP
     for hp in 0 1; do
         for mp in 0 1; do
