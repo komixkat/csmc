@@ -1021,6 +1021,130 @@ download_mod_from_modrinth() {
     return 0
 }
 
+mod_jar_for_id() {
+    local mods_dir="$1" target="$2"
+    local jar
+    for jar in "$mods_dir"/*.jar; do
+        [ -f "$jar" ] || continue
+        local id
+        id=$(python3 - "$jar" <<'PY' 2>/dev/null
+import sys, zipfile, json
+try:
+    with zipfile.ZipFile(sys.argv[1]) as z:
+        print(json.loads(z.read("fabric.mod.json"))["id"])
+except Exception:
+    pass
+PY
+)
+        if [ "$id" = "$target" ]; then
+            basename "$jar"
+            return 0
+        fi
+    done
+    return 1
+}
+
+crashed_mod_jar() {
+    local log="$1" mods_dir="$2"
+    local id jar name
+    id=$(grep -aoP "from mod \K[A-Za-z0-9_.-]+" "$log" | head -n 1)
+    if [ -n "$id" ]; then
+        jar=$(mod_jar_for_id "$mods_dir" "$id")
+        if [ -n "$jar" ]; then
+            echo "$jar"
+            return 0
+        fi
+    fi
+    name=$(grep -aoP "~\[\K[A-Za-z0-9_.+%-]+\.jar" "$log" \
+        | grep -vE "fabric-loader|server-intermediary|minecraft|^fabric-api" | head -n 1)
+    if [ -n "$name" ] && [ -f "$mods_dir/$name" ]; then
+        echo "$name"
+        return 0
+    fi
+    name=$(grep -aoP "/mods/\K[A-Za-z0-9_.+%-]+\.jar" "$log" \
+        | grep -vE "fabric-loader|server-intermediary|minecraft|^fabric-api" | head -n 1)
+    if [ -n "$name" ] && [ -f "$mods_dir/$name" ]; then
+        echo "$name"
+        return 0
+    fi
+    return 1
+}
+
+initial_launch() {
+    log "Performing initial server launch..."
+    log "This will generate the world from the seed..."
+    echo ""
+
+    local launch_attempt=0
+    while [ "$launch_attempt" -lt 8 ]; do
+        launch_attempt=$((launch_attempt + 1))
+        cd "$SERVER_DIR"
+        rm -f /tmp/mc-console.log /tmp/mc-console.pipe
+        mkfifo /tmp/mc-console.pipe
+
+        java -Xms1G -Xmx2G -jar fabric-server-launch.jar nogui \
+            < /tmp/mc-console.pipe > "$SERVER_DIR/event/logs/setup-launch.log" 2>&1 &
+        local server_pid=$!
+
+        exec 3<>/tmp/mc-console.pipe
+        log "Waiting for world generation to complete (attempt $launch_attempt)..."
+        local wait_seconds=0
+        while kill -0 "$server_pid" 2>/dev/null && ! grep -q "Done" "$SERVER_DIR/event/logs/setup-launch.log" 2>/dev/null; do
+            sleep 3
+            wait_seconds=$((wait_seconds + 3))
+            if [ "$wait_seconds" -ge 480 ]; then
+                warn "World generation exceeded 8 minutes, stopping server..."
+                echo "stop" >&3
+                wait "$server_pid" || true
+                break
+            fi
+        done
+
+        if kill -0 "$server_pid" 2>/dev/null; then
+            ok "World generated, sending shutdown command..."
+            echo "scoreboard objectives add csmc_time dummy" >&3
+            sleep 1
+            echo "stop" >&3
+            wait "$server_pid" || true
+            exec 3>&-
+            break
+        fi
+
+        exec 3>&-
+
+        if grep -q "Done" "$SERVER_DIR/event/logs/setup-launch.log" 2>/dev/null; then
+            ok "Server shut down cleanly"
+            break
+        fi
+
+        local bad_jar
+        bad_jar=$(crashed_mod_jar "$SERVER_DIR/event/logs/setup-launch.log" "$SERVER_DIR/mods")
+        if [ -z "$bad_jar" ]; then
+            warn "Server exited during initial launch and no crashing mod could be identified"
+            warn "Check $SERVER_DIR/event/logs/setup-launch.log"
+            rm -f /tmp/mc-console.pipe
+            return 1
+        fi
+        warn "Mod $bad_jar is incompatible with $MC_VERSION, removing it"
+        rm -f "$SERVER_DIR/mods/$bad_jar"
+        if [ -n "$MODS_DOWNLOADED" ] && [ "$MODS_DOWNLOADED" -gt 0 ]; then
+            MODS_DOWNLOADED=$((MODS_DOWNLOADED - 1))
+        fi
+        rm -rf "$SERVER_DIR/world"
+        log "Retrying initial launch..."
+    done
+
+    rm -f /tmp/mc-console.pipe
+
+    if [ "$launch_attempt" -ge 8 ]; then
+        warn "Server could not start cleanly after removing incompatible mods"
+        warn "Check $SERVER_DIR/event/logs/setup-launch.log"
+        return 1
+    fi
+
+    return 0
+}
+
 pack_format_for_mc() {
     local mc="$1"
     local major minor patch
@@ -1418,7 +1542,7 @@ main() {
     fi
 
     log "Creating directory structure..."
-    mkdir -p "$SERVER_DIR"/{mods,event/config,event/logs,world,logs,java}
+    mkdir -p "$SERVER_DIR"/{config,mods,event/config,event/logs,world,logs,java}
     ok "Directories created"
     echo ""
 
@@ -1525,52 +1649,14 @@ CFG
     ok "Event config created"
     echo ""
 
-    log "Performing initial server launch..."
-    log "This will generate the world from the seed..."
-    echo ""
-
-    cd "$SERVER_DIR"
-    rm -f /tmp/mc-console.log /tmp/mc-console.pipe
-    mkfifo /tmp/mc-console.pipe
-
-    java -Xms1G -Xmx2G -jar fabric-server-launch.jar nogui \
-        < /tmp/mc-console.pipe > "$SERVER_DIR/event/logs/setup-launch.log" 2>&1 &
-    local server_pid=$!
-
-    exec 3<>/tmp/mc-console.pipe
-    log "Waiting for world generation to complete..."
-    local wait_seconds=0
-    while kill -0 "$server_pid" 2>/dev/null && ! grep -q "Done" "$SERVER_DIR/event/logs/setup-launch.log" 2>/dev/null; do
-        sleep 3
-        wait_seconds=$((wait_seconds + 3))
-        if [ "$wait_seconds" -ge 480 ]; then
-            warn "World generation exceeded 8 minutes, stopping server..."
-            echo "stop" >&3
-            wait "$server_pid" || true
-            break
-        fi
-    done
-
-    if ! kill -0 "$server_pid" 2>/dev/null; then
-        if grep -q "Done" "$SERVER_DIR/event/logs/setup-launch.log" 2>/dev/null; then
-            ok "Server shut down cleanly"
-        else
-            warn "Server exited during initial launch, check event/logs/setup-launch.log"
-        fi
+    if initial_launch; then
+        echo ""
+        ok "Initial launch complete, server shut down cleanly"
+        echo ""
     else
-        ok "World generated, sending shutdown command..."
-        echo "scoreboard objectives add csmc_time dummy" >&3
-        sleep 1
-        echo "stop" >&3
-        wait "$server_pid" || true
+        echo ""
+        return 1
     fi
-
-    exec 3>&-
-    rm -f /tmp/mc-console.pipe
-
-    echo ""
-    ok "Initial launch complete, server shut down cleanly"
-    echo ""
 
     log "Installing hold-at-spawn datapack..."
     if write_hold_datapack; then
