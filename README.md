@@ -37,21 +37,25 @@ The connect address (IP:25565) is printed on each start. Flags:
 
 Whitelist and online-mode are off by default.
 
-## Reset the world
+## Reset
 
 ```bash
 cd scripts
 ./reset.sh
 ```
 
-Moves the current world to `backups/` and starts fresh, so the server generates a new world from the same seed on the next start.
+Moves the entire `server/` folder (Java, Fabric, mods, world, config) to `backups/` and removes the `start.sh` shortcut, leaving the repo clean. Then install a fresh server:
+
+```bash
+./setup.sh
+```
 
 ## Remove everything
 
 ```bash
 cd scripts
 ./reset.sh
-rm -rf ../server ../backups ../start.sh
+rm -rf ../backups
 ```
 
 Or delete the whole folder. Nothing is installed outside it.
@@ -59,6 +63,6 @@ Or delete the whole folder. Nothing is installed outside it.
 ## Layout
 
 - `scripts/setup.sh` - installs the server
-- `scripts/reset.sh` - regenerates the world from the seed
+- `scripts/reset.sh` - wipes the server into `backups/` for a clean reinstall
 - `server/` - the Minecraft server (Java, Fabric, mods, world, config), created by setup
 - `start.sh` - shortcut to start the server, created by setup
