@@ -13,7 +13,7 @@ Version selection is two-step: first pick a major version (every major.minor wit
 
 The setup needs adventure mode and the world border. Adventure mode arrived in 1.4.2 and the world border in 1.9, but Fabric requires 1.14.4+, so every version offered on the first screen supports all gameplay used here. The enderdragon and blaze rods exist in every version back to 1.0.
 
-Players spawn at the natural world spawn in adventure mode with a small world border around it, so nobody can wander off. Expand the border for a race with `/worldborder set <diameter>` in the server console.
+Players spawn at the natural world spawn in adventure mode with a small 10-block world border around it, so nobody can wander off before the race begins. Typing `/speedrun start` in the server console lifts the border, enables pvp, and switches everyone to survival.
 
 Optional overrides (pass as env vars):
 
@@ -27,7 +27,17 @@ MC_VERSION=1.16.1 EVENT_SEED=123 JAVA_MEMORY=14G VIEW_DISTANCE=16 MAX_PLAYERS=30
 ./start.sh
 ```
 
-The connect address (IP:25565) is printed on each start. Flags:
+The connect address (IP:25565) is printed on each start. Once the server is up, a 10-block world border appears centered on the spawn point. In the server terminal you can run:
+
+```bash
+/speedrun start    # begin the speedrun: border to race size, enable pvp, set survival, start the timer scoreboard and achievement log
+/speedrun status   # show elapsed time and notable achievements so far
+/speedrun end      # stop the timer and close out the race
+```
+
+`/speedrun start` opens a `speedrun_time` scoreboard (seconds since start) on the side of the screen, and logs the first notable achievements to `event/results/achievements.txt`. Race totals are written to `event/results/races.txt`.
+
+Flags:
 
 ```bash
 ./start.sh --no-whitelist   # force whitelist off
@@ -67,4 +77,5 @@ Or delete the whole folder. Nothing is installed outside it.
 - `scripts/setup.sh` - installs the server
 - `scripts/reset.sh` - wipes the server into `backups/` for a clean reinstall
 - `server/` - the Minecraft server (Java, Fabric, mods, world, config), created by setup
+- `server/event/results/` - speedrun logs (races.txt, achievements.txt)
 - `start.sh` - shortcut to start the server, created by setup
