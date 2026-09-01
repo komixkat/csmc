@@ -899,7 +899,16 @@ t = u8()
 _ = name()
 root = tag(t)
 data_tag = root['Data'] if 'Data' in root else root
-print('%s %s %s' % (data_tag['SpawnX'], data_tag.get('SpawnY', 64), data_tag['SpawnZ']))
+if 'SpawnX' in data_tag:
+    sx, sy, sz = data_tag['SpawnX'], data_tag.get('SpawnY', 64), data_tag['SpawnZ']
+else:
+    sp = data_tag.get('spawn') if isinstance(data_tag.get('spawn'), dict) else {}
+    p = sp.get('pos')
+    if isinstance(p, list) and len(p) >= 3:
+        sx, sy, sz = p[0], p[1], p[2]
+    else:
+        sx, sy, sz = 0, 64, 0
+print('%s %s %s' % (sx, sy, sz))
 PY
 }
 
@@ -1012,6 +1021,104 @@ download_mod_from_modrinth() {
     return 0
 }
 
+pack_format_for_mc() {
+    local mc="$1"
+    local major minor patch
+    major=$(echo "$mc" | cut -d. -f1 | grep -oP '^\d+')
+    minor=$(echo "$mc" | cut -d. -f2 | grep -oP '^\d+')
+    patch=$(echo "$mc" | cut -d. -f3 | grep -oP '^\d+')
+    major=${major:-0}
+    minor=${minor:-0}
+    patch=${patch:-0}
+    if [ "$major" -ge 26 ] 2>/dev/null; then
+        if [ "$minor" -ge 2 ] 2>/dev/null; then
+            echo 107.1
+        else
+            echo 101.1
+        fi
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 21 ] 2>/dev/null; then
+        case "$patch" in
+            9|10) echo 88.0 ;;
+            11) echo 94.1 ;;
+            7|8) echo 81 ;;
+            6) echo 80 ;;
+            5) echo 71 ;;
+            4) echo 61 ;;
+            2|3) echo 57 ;;
+            0|1) echo 48 ;;
+        esac
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 20 ] 2>/dev/null; then
+        case "$patch" in
+            5|6) echo 41 ;;
+            3|4) echo 26 ;;
+            2) echo 18 ;;
+            0|1) echo 15 ;;
+        esac
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 19 ] 2>/dev/null; then
+        if [ "$patch" -ge 4 ] 2>/dev/null; then
+            echo 12
+        else
+            echo 10
+        fi
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 18 ] 2>/dev/null; then
+        if [ "$patch" -ge 2 ] 2>/dev/null; then
+            echo 9
+        else
+            echo 8
+        fi
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 17 ] 2>/dev/null; then
+        echo 7
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 16 ] 2>/dev/null; then
+        if [ "$patch" -ge 2 ] 2>/dev/null; then
+            echo 6
+        else
+            echo 5
+        fi
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 15 ] 2>/dev/null; then
+        echo 5
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 14 ] 2>/dev/null; then
+        echo 4
+    else
+        echo 4
+    fi
+}
+
+pack_format_modern_for_mc() {
+    local mc="$1"
+    local major minor patch
+    major=$(echo "$mc" | cut -d. -f1 | grep -oP '^\d+')
+    minor=$(echo "$mc" | cut -d. -f2 | grep -oP '^\d+')
+    patch=$(echo "$mc" | cut -d. -f3 | grep -oP '^\d+')
+    major=${major:-0}
+    minor=${minor:-0}
+    patch=${patch:-0}
+    if [ "$major" -ge 26 ] 2>/dev/null; then
+        echo 1
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 21 ] 2>/dev/null && [ "$patch" -ge 9 ] 2>/dev/null; then
+        echo 1
+    else
+        echo 0
+    fi
+}
+
+pack_fn_dir_for_mc() {
+    local mc="$1"
+    local major minor patch
+    major=$(echo "$mc" | cut -d. -f1 | grep -oP '^\d+')
+    minor=$(echo "$mc" | cut -d. -f2 | grep -oP '^\d+')
+    patch=$(echo "$mc" | cut -d. -f3 | grep -oP '^\d+')
+    major=${major:-0}
+    minor=${minor:-0}
+    patch=${patch:-0}
+    if [ "$major" -ge 26 ] 2>/dev/null; then
+        echo function
+    elif [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 21 ] 2>/dev/null; then
+        echo function
+    else
+        echo functions
+    fi
+}
+
 write_hold_datapack() {
     local level_dat="$SERVER_DIR/world/level.dat"
     [ -f "$level_dat" ] || { warn "No world found, skipping hold datapack"; return 1; }
@@ -1098,25 +1205,51 @@ t = u8()
 _ = name()
 root = tag(t)
 data_tag = root['Data'] if 'Data' in root else root
-print('%s %s %s' % (data_tag.get('SpawnX', 0), data_tag.get('SpawnY', 64), data_tag.get('SpawnZ', 0)))
+if 'SpawnX' in data_tag:
+    sx, sy, sz = data_tag['SpawnX'], data_tag.get('SpawnY', 64), data_tag['SpawnZ']
+else:
+    sp = data_tag.get('spawn') if isinstance(data_tag.get('spawn'), dict) else {}
+    p = sp.get('pos')
+    if isinstance(p, list) and len(p) >= 3:
+        sx, sy, sz = p[0], p[1], p[2]
+    else:
+        sx, sy, sz = 0, 64, 0
+print('%s %s %s' % (sx, sy, sz))
 PY
 )
     read -r sx sy sz <<< "$spawn" || true
     sy=$((sy + 1))
     local radius="${START_BORDER:-10}"
     local pack_dir="$SERVER_DIR/world/datapacks/csmc_hold"
-    mkdir -p "$pack_dir/data/csmc_hold/functions" "$pack_dir/data/minecraft/tags/functions"
+    local fdir
+    fdir=$(pack_fn_dir_for_mc "$MC_VERSION")
+    mkdir -p "$pack_dir/data/csmc_hold/$fdir" "$pack_dir/data/minecraft/tags/$fdir"
 
-    cat > "$pack_dir/pack.mcmeta" <<META
+    local pfmt pmodern
+    pfmt=$(pack_format_for_mc "$MC_VERSION")
+    pmodern=$(pack_format_modern_for_mc "$MC_VERSION")
+    if [ "$pmodern" = 1 ]; then
+        cat > "$pack_dir/pack.mcmeta" <<META
 {
   "pack": {
-    "pack_format": 4,
+    "min_format": $pfmt,
+    "max_format": $pfmt,
     "description": "Hold players at spawn until the race starts"
   }
 }
 META
+    else
+        cat > "$pack_dir/pack.mcmeta" <<META
+{
+  "pack": {
+    "pack_format": $pfmt,
+    "description": "Hold players at spawn until the race starts"
+  }
+}
+META
+    fi
 
-    cat > "$pack_dir/data/minecraft/tags/functions/tick.json" <<TICK
+    cat > "$pack_dir/data/minecraft/tags/$fdir/tick.json" <<TICK
 {
   "values": [
     "csmc_hold:tick"
@@ -1124,12 +1257,12 @@ META
 }
 TICK
 
-    cat > "$pack_dir/data/csmc_hold/functions/tick.mcfunction" <<TICKFN
+    cat > "$pack_dir/data/csmc_hold/$fdir/tick.mcfunction" <<TICKFN
 execute positioned $(( sx - radius )) 0 $(( sz - radius )) as @a unless entity @s[dx=$(( radius * 2 )),dy=512,dz=$(( radius * 2 ))] run execute if entity @s[gamemode=adventure] run tp @s $sx $sy $sz
 execute if entity @a[gamemode=survival] run function csmc_hold:race
 TICKFN
 
-    cat > "$pack_dir/data/csmc_hold/functions/step.mcfunction" <<STEP
+    cat > "$pack_dir/data/csmc_hold/$fdir/step.mcfunction" <<STEP
 scoreboard players add c csmc_time 5
 execute if score c csmc_time matches 100 run scoreboard players set c csmc_time 0
 execute if score c csmc_time matches 0 run scoreboard players add s csmc_time 1
@@ -1176,25 +1309,25 @@ STEP
                         cpad='{"score":{"name":"c","objective":"csmc_time"}}'
                     fi
                     printf -- 'execute %s run title @a actionbar {"text":"Time: ","color":"gold","extra":[%s,{"text":":"},%s,{"text":":"},%s,{"text":"."},%s]}\n' "${cond# }" "$hpad" "$mpad" "$spad" "$cpad" \
-                        >> "$pack_dir/data/csmc_hold/functions/step.mcfunction"
+                        >> "$pack_dir/data/csmc_hold/$fdir/step.mcfunction"
                 done
             done
         done
     done
 
-    cat > "$pack_dir/data/csmc_hold/functions/race.mcfunction" <<RACE
+    cat > "$pack_dir/data/csmc_hold/$fdir/race.mcfunction" <<RACE
 execute if score done csmc_time matches 0 if entity @e[type=ender_dragon] run scoreboard players set seen csmc_time 1
 execute if score done csmc_time matches 0 if score seen csmc_time matches 1 unless entity @e[type=ender_dragon] run function csmc_hold:beat
 execute if score done csmc_time matches 0 run function csmc_hold:step
 RACE
 
-    cat > "$pack_dir/data/csmc_hold/functions/beat.mcfunction" <<BEAT
+    cat > "$pack_dir/data/csmc_hold/$fdir/beat.mcfunction" <<BEAT
 scoreboard players set done csmc_time 1
 title @a title {"text":"Beat the game.","color":"gold","bold":true}
-tellraw @a {"text":"Beat the game in ","color":"gold","bold":true,"extra":[{"score":{"name":"h","objective":"csmc_time"}},{"text":":"},{"score":{"name":"m","objective":"csmc_time"}},{"text":":"},{"score":{"name":"s","objective":"csmc_time"}},{"text":"."},{"score":{"name":"c","objective":"csmc_time"}},{"text":". Good Game.","color":"green"}]}
+tellraw @a {"text":"Beat the game in ","color":"gold","bold":true,"extra":[{"score":{"name":"h","objective":"csmc_time"}},{"text":":"},{"score":{"name":"m","objective":"csmc_time"}},{"text":":"},{"score":{"name":"s","objective":"csmc_time"}},{"text":"."},{"score":{"name":"c","objective":"csmc_time"}},{"text":"."},{"text":" Good Game.","color":"green"}]}
 BEAT
 
-    cat > "$pack_dir/data/csmc_hold/functions/release.mcfunction" <<REL
+    cat > "$pack_dir/data/csmc_hold/$fdir/release.mcfunction" <<REL
 gamemode survival @a
 scoreboard players set c csmc_time 0
 scoreboard players set s csmc_time 0
@@ -1206,7 +1339,7 @@ time set 0
 tellraw @a {"text":"Timer Started, Best of Luck.","color":"green","bold":true}
 REL
 
-    cat > "$pack_dir/data/csmc_hold/functions/arm.mcfunction" <<ARM
+    cat > "$pack_dir/data/csmc_hold/$fdir/arm.mcfunction" <<ARM
 gamemode adventure @a
 scoreboard players set c csmc_time 0
 scoreboard players set s csmc_time 0
