@@ -57,6 +57,8 @@ names = {
     (1, 19): "The Wild Update",
     (1, 20): "Trails & Tales",
     (1, 21): "Tricky Trials",
+    (26, 1): "Tiny Takeover",
+    (26, 2): "Chaos Cubed",
 }
 def parse(vid):
     m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?$", vid)
