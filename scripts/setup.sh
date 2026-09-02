@@ -1243,6 +1243,24 @@ pack_fn_dir_for_mc() {
     fi
 }
 
+end_kill_adv_for_mc() {
+    local mc="$1"
+    local major minor patch
+    major=$(echo "$mc" | cut -d. -f1 | grep -oP '^\d+' || true)
+    minor=$(echo "$mc" | cut -d. -f2 | grep -oP '^\d+' || true)
+    patch=$(echo "$mc" | cut -d. -f3 | grep -oP '^\d+' || true)
+    major=${major:-0}
+    minor=${minor:-0}
+    patch=${patch:-0}
+    if [ "$major" -gt 1 ] 2>/dev/null \
+        || { [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -gt 16 ] 2>/dev/null; } \
+        || { [ "$major" -eq 1 ] 2>/dev/null && [ "$minor" -eq 16 ] 2>/dev/null && [ "$patch" -ge 3 ] 2>/dev/null; }; then
+        echo "minecraft:end/kill_dragon"
+    else
+        echo "minecraft:end/end_kill_dragon"
+    fi
+}
+
 write_hold_datapack() {
     local level_dat="$SERVER_DIR/world/level.dat"
     [ -f "$level_dat" ] || { warn "No world found, skipping hold datapack"; return 1; }
@@ -1345,8 +1363,9 @@ PY
     sy=$((sy + 1))
     local radius="${START_BORDER:-10}"
     local pack_dir="$SERVER_DIR/world/datapacks/csmc_hold"
-    local fdir
+    local fdir kad
     fdir=$(pack_fn_dir_for_mc "$MC_VERSION")
+    kad=$(end_kill_adv_for_mc "$MC_VERSION")
     mkdir -p "$pack_dir/data/csmc_hold/$fdir" "$pack_dir/data/minecraft/tags/$fdir"
 
     local pfmt pmodern
@@ -1447,8 +1466,8 @@ RACE
 
     cat > "$pack_dir/data/csmc_hold/$fdir/beat.mcfunction" <<BEAT
 scoreboard players set done csmc_time 1
-title @a title {"text":"Beat the game.","color":"gold","bold":true}
-tellraw @a {"text":"Beat the game in ","color":"gold","bold":true,"extra":[{"score":{"name":"h","objective":"csmc_time"}},{"text":":"},{"score":{"name":"m","objective":"csmc_time"}},{"text":":"},{"score":{"name":"s","objective":"csmc_time"}},{"text":"."},{"score":{"name":"c","objective":"csmc_time"}},{"text":"."},{"text":" Good Game.","color":"green"}]}
+title @a title {"text":"Dragon Slayed!","color":"gold","bold":true}
+tellraw @a {"text":"","extra":[{"selector":"@a[advancements={$kad:true}]","color":"gold","bold":true},{"text":" slayed the dragon in ","color":"gold","bold":true},{"score":{"name":"h","objective":"csmc_time"}},{"text":":"},{"score":{"name":"m","objective":"csmc_time"}},{"text":":"},{"score":{"name":"s","objective":"csmc_time"}},{"text":"."},{"score":{"name":"c","objective":"csmc_time"}},{"text":"."},{"text":" Good Game.","color":"green"}]}
 BEAT
 
     cat > "$pack_dir/data/csmc_hold/$fdir/release.mcfunction" <<REL
@@ -1460,7 +1479,9 @@ scoreboard players set h csmc_time 0
 scoreboard players set seen csmc_time 0
 scoreboard players set done csmc_time 0
 time set 0
-tellraw @a {"text":"Timer Started, Best of Luck.","color":"green","bold":true}
+advancement revoke @a only $kad
+title @a title {"text":"Beat the game.","color":"gold","bold":true}
+tellraw @a {"text":"Go beat the game. Best of luck!","color":"green","bold":true}
 REL
 
     cat > "$pack_dir/data/csmc_hold/$fdir/arm.mcfunction" <<ARM
@@ -1471,6 +1492,7 @@ scoreboard players set m csmc_time 0
 scoreboard players set h csmc_time 0
 scoreboard players set seen csmc_time 0
 scoreboard players set done csmc_time 0
+advancement revoke @a only $kad
 ARM
 }
 

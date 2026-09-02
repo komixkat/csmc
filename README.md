@@ -45,7 +45,7 @@ Back to adventure mode for the next race. The timer stops and resets to zero.
 
 While you run, a gold timer shows on the action bar above the hotbar in `h:m:s.cs` form (centisecond = one hundredth of a second). It is width-fixed so the digits never shift around. It starts with `release` and resets with `arm` or `release`.
 
-When the Ender Dragon is slain, the timer freezes and the chat announces `Beat the game in h:m:s.cs. Good Game.` It stays frozen until the next `arm` or `release`.
+When the Ender Dragon is slain, the timer freezes, a `Dragon Slayed!` title pops up, and the chat announces `<player> slayed the dragon in h:m:s.cs. Good Game.` (the player who dealt the final blow, read from the Free the End advancement). It stays frozen until the next `arm` or `release`. On `release`, a `Beat the game.` title shows with the message `Go beat the game. Best of luck!`.
 
 ## Server flags
 
