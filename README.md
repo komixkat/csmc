@@ -43,41 +43,15 @@ Back to adventure mode for the next race. The timer stops and resets to zero.
 
 ### Timer
 
-While you run, a gold timer shows on the action bar above the hotbar in `h:m:s.cs` form (centisecond = one hundredth of a second). It is width-fixed so the digits never shift around. It starts with `release` and resets with `arm` or `release`.
-
-When the Ender Dragon is slain, the timer freezes, a `Dragon Slayed!` title pops up, and the chat announces `<player> slayed the dragon in h:m:s.cs. Good Game.` (the player who dealt the final blow, read from the Free the End advancement). It stays frozen until the next `arm` or `release`. On `release`, a `Beat the game.` title shows with the message `Go beat the game. Best of luck!`.
+A gold, width-fixed `h:m:s.cs` timer shows on the action bar while the race runs. It starts on `release` and resets to zero on `arm`.
 
 ## Server flags
 
-```bash
-./start.sh --no-whitelist
-```
-
-Whitelist off (default).
-
-```bash
-./start.sh --whitelist
-```
-
-Whitelist on.
-
-```bash
-./start.sh --offline
-```
-
-online-mode=false (default).
-
-```bash
-./start.sh --online
-```
-
-online-mode=true.
-
-```bash
-./start.sh --help
-```
-
-Show usage.
+| Flag | Effect |
+|---|---|
+| `--whitelist` / `--no-whitelist` | Whitelist on / off (default off) |
+| `--online` / `--offline` | online-mode true / false (default false) |
+| `--help` | Show usage |
 
 ## Reset
 
