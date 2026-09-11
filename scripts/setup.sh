@@ -1401,7 +1401,7 @@ META
 TICK
 
     cat > "$pack_dir/data/csmc_hold/$fdir/tick.mcfunction" <<TICKFN
-execute positioned $(( sx - radius )) 0 $(( sz - radius )) as @a unless entity @s[dx=$(( radius * 2 )),dy=512,dz=$(( radius * 2 ))] run execute if entity @s[gamemode=adventure] run tp @s $sx $sy $sz
+execute if score released csmc_time matches 0 positioned $(( sx - radius )) 0 $(( sz - radius )) as @a unless entity @s[dx=$(( radius * 2 )),dy=512,dz=$(( radius * 2 ))] run execute if entity @s[gamemode=adventure] run tp @s $sx $sy $sz
 execute if entity @a[gamemode=survival] run function csmc_hold:race
 TICKFN
 
@@ -1471,6 +1471,7 @@ tellraw @a {"text":"","extra":[{"selector":"@a[advancements={$kad:true}]","color
 BEAT
 
     cat > "$pack_dir/data/csmc_hold/$fdir/release.mcfunction" <<REL
+scoreboard players set released csmc_time 1
 gamemode survival @a
 scoreboard players set c csmc_time 0
 scoreboard players set s csmc_time 0
@@ -1485,6 +1486,7 @@ tellraw @a {"text":"Go beat the game. Best of luck!","color":"green","bold":true
 REL
 
     cat > "$pack_dir/data/csmc_hold/$fdir/arm.mcfunction" <<ARM
+scoreboard players set released csmc_time 0
 gamemode adventure @a
 scoreboard players set c csmc_time 0
 scoreboard players set s csmc_time 0
