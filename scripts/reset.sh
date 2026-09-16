@@ -15,7 +15,6 @@ backup_dir="$SCRIPT_DIR/backups/server-$stamp"
 printf '\033[1;34m[RESET]\033[0m Moving %s to %s\n' "$SERVER_DIR" "$backup_dir" >&2
 mkdir -p "$SCRIPT_DIR/backups"
 mv "$SERVER_DIR" "$backup_dir"
-rm -f "$SCRIPT_DIR/start.sh"
 
 printf '\033[1;32m[OK]\033[0m Old server backed up to %s\n' "$backup_dir" >&2
 printf '\033[1;32m[OK]\033[0m Clean start ready\n' >&2

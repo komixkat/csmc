@@ -18,6 +18,7 @@ MC_VERSION=1.16.1 EVENT_SEED=123 JAVA_MEMORY=14G VIEW_DISTANCE=16 MAX_PLAYERS=30
 ## Play
 
 ```bash
+cd server
 ./start.sh
 ```
 
@@ -60,7 +61,7 @@ cd scripts
 ./reset.sh
 ```
 
-Moves `server/` to `backups/` and clears the `start.sh` shortcut.
+Moves `server/` to `backups/` for a clean restart.
 
 ## Remove everything
 
@@ -77,4 +78,4 @@ rm -rf ../backups
 - `server/` - the server (Java, Fabric, mods, world, config), created by setup
 - `server/world/datapacks/csmc_hold/` - the spawn-hold datapack and race timer, created by setup
 - `server/event/config/event.json` - event settings (seed, memory, view distance)
-- `start.sh` - shortcut to start the server, created by setup
+- `server/start.sh` - starts the server, created by setup

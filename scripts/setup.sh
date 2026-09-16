@@ -1401,7 +1401,7 @@ META
 TICK
 
     cat > "$pack_dir/data/csmc_hold/$fdir/tick.mcfunction" <<TICKFN
-execute if score released csmc_time matches 0 positioned $(( sx - radius )) 0 $(( sz - radius )) as @a unless entity @s[dx=$(( radius * 2 )),dy=512,dz=$(( radius * 2 ))] run execute if entity @s[gamemode=adventure] run tp @s $sx $sy $sz
+execute unless score released csmc_time matches 1 positioned $(( sx - radius )) 0 $(( sz - radius )) as @a unless entity @s[dx=$(( radius * 2 )),dy=512,dz=$(( radius * 2 ))] run execute if entity @s[gamemode=adventure] run tp @s $sx $sy $sz
 execute if entity @a[gamemode=survival] run function csmc_hold:race
 TICKFN
 
@@ -1459,8 +1459,8 @@ STEP
     done
 
     cat > "$pack_dir/data/csmc_hold/$fdir/race.mcfunction" <<RACE
-execute if score done csmc_time matches 0 if entity @e[type=ender_dragon] run scoreboard players set seen csmc_time 1
-execute if score done csmc_time matches 0 if score seen csmc_time matches 1 unless entity @e[type=ender_dragon] run function csmc_hold:beat
+execute if score done csmc_time matches 0 in minecraft:the_end run execute if entity @e[type=ender_dragon] run scoreboard players set seen csmc_time 1
+execute if score done csmc_time matches 0 in minecraft:the_end run execute if score seen csmc_time matches 1 unless entity @e[type=ender_dragon] run function csmc_hold:beat
 execute if score done csmc_time matches 0 run function csmc_hold:step
 RACE
 
@@ -1688,11 +1688,6 @@ CFG
     fi
     echo ""
 
-    log "Creating convenience symlink..."
-    ln -sf "$SERVER_DIR/start.sh" "$BASE_DIR/start.sh"
-    ok "Symlink: $BASE_DIR/start.sh -> $SERVER_DIR/start.sh"
-    echo ""
-
     wide_separator
     echo ""
     echo "  SETUP COMPLETE"
@@ -1707,9 +1702,6 @@ CFG
     echo ""
     echo "  To start the server:"
     echo "    cd $SERVER_DIR && ./start.sh"
-    echo ""
-    echo "  Or use the shortcut:"
-    echo "    $BASE_DIR/start.sh"
     echo ""
     echo "  Server address: $SERVER_IP:25565"
     echo ""
